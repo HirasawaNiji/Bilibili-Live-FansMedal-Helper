@@ -18,6 +18,7 @@ interface WindowScrollPosition {
 
 // 菜单index到名称的映射
 const index2name: Record<MenuIndex, string> = {
+  RealtimeStatus: '实时状态',
   MainSiteTasks: '主站任务',
   LiveTasks: '直播任务',
   OtherTasks: '其它任务',

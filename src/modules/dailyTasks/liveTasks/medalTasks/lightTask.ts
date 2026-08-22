@@ -1,5 +1,5 @@
 import { delayToNextMoment, isNowBefore, isTimestampToday, tsm } from '@/library/luxon'
-import { useBiliStore, useModuleStore } from '@/stores'
+import { useBiliStore, useModuleStore, useRuntimeStatusStore } from '@/stores'
 import { sleep } from '@/library/utils'
 import type { ModuleStatusTypes } from '@/types'
 import MedalModule from '@/modules/dailyTasks/liveTasks/medalTasks/MedalModule'
@@ -8,6 +8,7 @@ import type { AfterExecutionAction, BatchExecutionResult, GroupedMedals } from '
 
 class LightTask extends MedalModule {
   config = this.medalTasksConfig.light
+  private runtimeStatus = useRuntimeStatusStore()
 
   set status(s: ModuleStatusTypes) {
     useModuleStore().moduleStatus.DailyTasks.LiveTasks.medalTasks.light = s
@@ -65,12 +66,14 @@ class LightTask extends MedalModule {
     const target_id = medal.medal.target_id
     const nick_name = medal.anchor_info.nick_name
     const medal_name = medal.medal.medal_name
+    this.runtimeStatus.setCurrent('light', medal, '正在检查点亮条件')
 
     const medalData = await this.fetchMedalData(target_id)
     if (!medalData) {
       this.logger.error(
         `粉丝勋章【${medal_name}】 无法获取主播【${nick_name}】（UID：${target_id}，直播间：${room_id}）的粉丝团点亮任务信息，跳过点赞点亮`,
       )
+      this.runtimeStatus.setItemStatus('light', medal, 'failed', '无法获取粉丝团点亮任务信息')
       return 'markUncompleted'
     }
 
@@ -79,6 +82,7 @@ class LightTask extends MedalModule {
       this.logger.error(
         `粉丝勋章【${medal_name}】 的点亮任务中没有点赞任务，无法在“不发送弹幕”模式下自动点亮`,
       )
+      this.runtimeStatus.setItemStatus('light', medal, 'failed', '没有可用的点赞点亮任务')
       return 'markUncompleted'
     }
 
@@ -90,10 +94,17 @@ class LightTask extends MedalModule {
           `粉丝勋章【${medal_name}】 无法确认主播【${nick_name}】（直播间：${room_id}）是否开播，休眠5分钟后放回等待队列`,
         )
         await sleep(300e3)
+        this.runtimeStatus.setItemStatus('light', medal, 'waiting', '直播状态查询失败，等待重试')
         return 'requeue'
       } else if (verdict === 'fail') {
         this.logger.log(
           `粉丝勋章【${medal_name}】 主播【${nick_name}】（直播间：${room_id}）尚未开播，进入等待队列；不会发送弹幕`,
+        )
+        this.runtimeStatus.setItemStatus(
+          'light',
+          medal,
+          'waiting',
+          '主播未开播，等待开播后点赞点亮',
         )
         return 'requeue'
       }
@@ -103,26 +114,31 @@ class LightTask extends MedalModule {
     this.logger.log(
       `粉丝勋章【${medal_name}】 主播【${nick_name}】已经开播，开始点赞 ${times} 次以恢复点亮`,
     )
+    this.runtimeStatus.setCurrent('light', medal, `主播已开播，正在点赞 ${times} 次以恢复点亮`)
 
     if (!(await this.like(medal, times))) {
+      this.runtimeStatus.setItemStatus('light', medal, 'failed', '点赞请求失败，未能恢复点亮')
       return 'markUncompleted'
     }
 
     await sleep(MedalModule.WAIT_MEDAL_UPDATE_DELAY)
     if (!(await this.refreshFansMedals())) {
       this.logger.warn(`粉丝勋章【${medal_name}】点赞后无法刷新粉丝勋章列表，无法确认是否点亮`)
+      this.runtimeStatus.setItemStatus('light', medal, 'failed', '已点赞，但无法刷新并确认点亮状态')
       return 'markUncompleted'
     }
 
     const latestMedal = useBiliStore().filteredFansMedalsMap.get(room_id)
     if (latestMedal?.medal.is_lighted === 1) {
       this.logger.log(`粉丝勋章【${medal_name}】已由B站确认恢复点亮`)
+      this.runtimeStatus.setItemStatus('light', medal, 'completed', '已由B站确认恢复点亮')
       return null
     }
 
     this.logger.warn(
       `粉丝勋章【${medal_name}】已执行点赞点亮，但刷新后仍处于熄灭状态，本轮按未完成处理`,
     )
+    this.runtimeStatus.setItemStatus('light', medal, 'failed', '已执行点赞，但刷新后仍为熄灭状态')
     return 'markUncompleted'
   }
 
@@ -154,6 +170,7 @@ class LightTask extends MedalModule {
       if (!(await MedalModule.waitForFansMedals())) {
         this.logger.error('粉丝勋章数据不存在，不执行点亮熄灭勋章任务')
         this.status = 'error'
+        this.runtimeStatus.setTaskPhase('light', 'error', '粉丝勋章数据不存在，任务未运行')
         return
       }
 
@@ -161,6 +178,7 @@ class LightTask extends MedalModule {
       MedalModule.initSnapshotsWithFansMedalsData()
 
       const { readyMedals, waitingMedals } = this.getMedals()
+      this.runtimeStatus.beginTask('light', readyMedals, waitingMedals)
       let pendingRoomids = waitingMedals.map((medal) => medal.room_info.room_id)
       let allCompleted = true
 
@@ -171,6 +189,11 @@ class LightTask extends MedalModule {
       if (!initialResult.stop && pendingRoomids.length > 0) {
         // 初始可执行房间已处理完，允许点赞/观看模块继续运行；本模块在后台等待剩余主播开播。
         this.status = 'waiting'
+        this.runtimeStatus.setTaskPhase(
+          'light',
+          'waiting',
+          `还有 ${pendingRoomids.length} 位主播未开播，正在等待`,
+        )
 
         while (pendingRoomids.length > 0) {
           const result = await this.runWaitingRound(
@@ -187,6 +210,11 @@ class LightTask extends MedalModule {
 
           pendingRoomids = result.requeueRoomids!
           if (pendingRoomids.length > 0) {
+            this.runtimeStatus.setTaskPhase(
+              'light',
+              'waiting',
+              `还有 ${pendingRoomids.length} 位主播未开播，正在等待`,
+            )
             const medalMap = useBiliStore().filteredFansMedalsMap
             const pendingRoomsInfo: Record<number, string | undefined> = {}
             for (const roomid of pendingRoomids) {
@@ -207,8 +235,10 @@ class LightTask extends MedalModule {
         this.config._lastCompleteTime = tsm()
         this.status = 'done'
         this.logger.log('点亮熄灭勋章任务已完成')
+        this.runtimeStatus.setTaskPhase('light', 'completed', '点亮熄灭勋章任务已全部完成')
       } else {
         this.status = 'waiting'
+        this.runtimeStatus.setTaskPhase('light', 'waiting', '仍有点亮任务未完成')
       }
     } else {
       if (isNowBefore(0, 5)) {
@@ -216,6 +246,7 @@ class LightTask extends MedalModule {
       } else {
         this.logger.log('今天已经完成过点亮熄灭勋章任务了')
         this.status = 'done'
+        this.runtimeStatus.setTaskPhase('light', 'completed', '今天已经完成过点亮熄灭勋章任务')
       }
     }
 

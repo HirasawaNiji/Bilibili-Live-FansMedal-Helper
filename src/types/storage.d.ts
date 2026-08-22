@@ -118,6 +118,7 @@ interface ModuleConfig {
 }
 
 type MenuIndex =
+  | 'RealtimeStatus'
   | 'MainSiteTasks'
   | 'LiveTasks'
   | 'OtherTasks'
