@@ -18,12 +18,9 @@ import { isNowAfter, isNowBefore, isTimestampToday, tsm } from '@/library/luxon'
 import _ from 'lodash'
 
 class MedalModule extends BaseModule {
-  /** 最大弹幕补发次数 */
-  protected static readonly DANMU_RETRY_LIMIT = 3
   /** 粉丝团升级任务 jump_type 对应的中文文案 */
   private static readonly TASK_ACTION_TEXT_MAP: Record<TaskJumpType, string> = {
     like: '点赞',
-    sendDanmu: '发弹幕',
     watchLive: '观看直播',
     feedLight: '投喂粉丝灯牌', // unused
     sendGift: '投喂礼物', // unused
@@ -40,10 +37,6 @@ class MedalModule extends BaseModule {
   }
   /** 等待B站更新粉丝勋章数据的延迟 */
   protected static readonly WAIT_MEDAL_UPDATE_DELAY = 3000
-  /** 发弹幕动态间隔时间 */
-  protected static get SEND_DANMU_DYNAMIC_INTERVAL() {
-    return _.random(6000, 8000)
-  }
   /** 点赞动态间隔时间 */
   protected static get LIKE_DYNAMIC_INTERVAL() {
     return _.random(15000, 20000)
@@ -329,45 +322,6 @@ class MedalModule extends BaseModule {
       }
     } catch (error) {
       this.logger.error(`点赞 ${logMessage} 出错`, error)
-    }
-
-    return false
-  }
-
-  /**
-   * 发弹幕
-   *
-   * @param medal 粉丝勋章
-   * @param danmu 弹幕内容
-   *
-   * @returns 是否发送成功
-   */
-  protected async sendDanmu(medal: LiveData.FansMedalPanel.List, danmu: string): Promise<boolean> {
-    const room_id = medal.room_info.room_id
-    const target_id = medal.medal.target_id
-    const nick_name = medal.anchor_info.nick_name
-    const medal_name = medal.medal.medal_name
-    const logMessage = `粉丝勋章【${medal_name}】 在主播【${nick_name}】（UID：${target_id}）的直播间（${room_id}）发送弹幕 ${danmu}`
-
-    try {
-      const response = await BAPI.live.sendMsg(danmu, room_id)
-      this.logger.log(`BAPI.live.sendMsg(${danmu}, ${room_id})`, response)
-      if (response.code === 0) {
-        if (response.msg === '') {
-          this.logger.log(`发弹幕 ${logMessage} 成功`)
-          return true
-        } else if (response.msg === 'k') {
-          this.logger.warn(`发弹幕 ${logMessage} 异常，弹幕可能包含屏蔽词`)
-        } else if (response.msg === 'f') {
-          this.logger.warn(`发弹幕 ${logMessage} 异常，弹幕被过滤`)
-        } else {
-          this.logger.warn(`发弹幕 ${logMessage} 异常，未知错误：${response.msg}`)
-        }
-      } else {
-        this.logger.error(`发弹幕 ${logMessage} 失败`, response.message)
-      }
-    } catch (error) {
-      this.logger.error(`发弹幕 ${logMessage} 出错`, error)
     }
 
     return false

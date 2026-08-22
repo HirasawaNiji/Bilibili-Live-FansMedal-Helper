@@ -144,63 +144,6 @@ declare namespace LiveData {
     }
   }
 
-  namespace SendMsg {
-    interface Data {
-      mode_info: ModeInfo
-      dm_v2: any
-    }
-
-    interface ModeInfo {
-      mode: number
-      show_player_type: number
-      extra: string
-      user: User
-    }
-
-    interface User {
-      uid: number
-      base: Base
-      medal: any
-      wealth: any
-      title: Title
-      guard: any
-      uhead_frame: any
-      guard_leader: GuardLeader
-    }
-
-    interface Base {
-      name: string
-      face: string
-      name_color: number
-      is_mystery: boolean
-      risk_ctrl_info: any
-      origin_info: OriginInfo
-      official_info: OfficialInfo
-      name_color_str: string
-    }
-
-    interface OriginInfo {
-      name: string
-      face: string
-    }
-
-    interface OfficialInfo {
-      role: number
-      title: string
-      desc: string
-      type: number
-    }
-
-    interface Title {
-      old_title_css_id: string
-      title_css_id: string
-    }
-
-    interface GuardLeader {
-      is_guard_leader: boolean
-    }
-  }
-
   namespace GetInfoByRoom {
     interface Data {
       room_info: RoomInfo

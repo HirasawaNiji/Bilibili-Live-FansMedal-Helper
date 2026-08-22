@@ -26,7 +26,6 @@ const defaultModuleStatus: ModuleStatus = {
       medalTasks: {
         light: '',
         like: '',
-        danmu: '',
         watch: '',
       },
     },
@@ -97,8 +96,8 @@ export const useModuleStore = defineStore('module', () => {
           light: () => {
             const medalTasksStatus = moduleStatus.value.DailyTasks.LiveTasks.medalTasks
 
-            if (medalTasksStatus.like === 'running' || medalTasksStatus.danmu === 'running') {
-              logger.warn('【点赞】或【发弹幕】模块仍在运行中，无法重新运行【点亮熄灭勋章】模块')
+            if (medalTasksStatus.like === 'running') {
+              logger.warn('【点赞】模块仍在运行中，无法重新运行【点亮熄灭勋章】模块')
               return
             }
 
@@ -114,12 +113,6 @@ export const useModuleStore = defineStore('module', () => {
 
             rerunModule('Default_FansMedals', true)
             rerunModule('DailyTask_LiveTask_LikeTask')
-          },
-          danmu: () => {
-            moduleStatus.value.DailyTasks.LiveTasks.medalTasks.danmu = ''
-            moduleConfig.value.DailyTasks.LiveTasks.medalTasks.danmu._lastCompleteTime = 0
-
-            rerunModule('Default_FansMedals', true)
           },
           watch: () => {
             moduleStatus.value.DailyTasks.LiveTasks.medalTasks.watch = ''

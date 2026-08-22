@@ -15,13 +15,6 @@ declare namespace Live {
     data: LiveData.GetActivatedMedalInfo.Data
   }
 
-  interface SendMsg {
-    code: number
-    data: LiveData.SendMsg.Data
-    message: string
-    msg: string
-  }
-
   interface LikeReport {
     code: number
     message: string

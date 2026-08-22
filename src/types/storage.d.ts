@@ -38,17 +38,6 @@ interface ModuleConfig {
           _todayLikeCount: number
           _lastCompleteTime: number
         }
-        danmu: {
-          enabled: boolean
-          danmuList: string[]
-          useTargetRounds: boolean
-          targetRounds: number
-          onlyWhenNotLiving: boolean
-          waitUntilNotLiving: boolean
-          isWhiteList: boolean
-          roomidList: number[]
-          _lastCompleteTime: number
-        }
         watch: {
           enabled: boolean
           useTargetRounds: boolean
@@ -144,7 +133,6 @@ interface UiConfig {
   medalInfoPanelIsSortMode: {
     light: boolean
     like: boolean
-    danmu: boolean
     watch: boolean
   }
 }

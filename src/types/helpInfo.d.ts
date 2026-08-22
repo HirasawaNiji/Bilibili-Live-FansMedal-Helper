@@ -20,8 +20,6 @@ interface HelpInfo {
         rounds: HelpInfoItem
         like: HelpInfoItem
         likeWaitUntilLiving: HelpInfoItem
-        danmu: HelpInfoItem
-        danmuWaitUntilNotLiving: HelpInfoItem
         watch: HelpInfoItem
         watchWaitUntilLiving: HelpInfoItem
       }

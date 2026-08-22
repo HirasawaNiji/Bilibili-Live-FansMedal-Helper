@@ -15,24 +15,6 @@ interface BapiMethods {
       target_id: number,
       web_location?: string,
     ) => Promise<Live.GetActivatedMedalInfo>
-    sendMsg: (
-      msg: string,
-      room_id: number,
-      room_type?: number,
-      mode?: number,
-      jumpfrom?: number,
-      fontsize?: number,
-      color?: number,
-      bubble?: number,
-      reply_mid?: number,
-      reply_attr?: number,
-      replay_dmid?: any,
-      reply_type?: number,
-      reply_uname?: string,
-      statistics?: string,
-      data_extend?: string,
-      web_location?: string,
-    ) => Promise<Live.SendMsg>
     likeReport: (
       room_id: number,
       anchor_id: number,

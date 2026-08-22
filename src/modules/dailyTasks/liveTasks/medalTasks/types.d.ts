@@ -3,8 +3,7 @@ import type { ModuleConfig } from '@/types'
 
 type _MedalTasks = ModuleConfig['DailyTasks']['LiveTasks']['medalTasks']
 
-type MedalTaskSharedConfig =
-  _MedalTasks['light'] | _MedalTasks['like'] | _MedalTasks['danmu'] | _MedalTasks['watch']
+type MedalTaskSharedConfig = _MedalTasks['light'] | _MedalTasks['like'] | _MedalTasks['watch']
 
 interface SharedMedalFilters {
   meetWhiteOrBlackList: (medal: LiveData.FansMedalPanel.List) => boolean
@@ -16,7 +15,7 @@ interface SharedMedalFilters {
 type GroupedMedals<K extends string> = Record<K, LiveData.FansMedalPanel.List[]>
 
 type RequestQueueKey = 'taskInfo' | 'roomStatus'
-type TaskJumpType = 'like' | 'sendDanmu' | 'watchLive' | 'feedLight' | 'sendGift'
+type TaskJumpType = 'like' | 'watchLive' | 'feedLight' | 'sendGift'
 
 /** 直播间直播状态快照 */
 interface LiveStatusSnapshot {

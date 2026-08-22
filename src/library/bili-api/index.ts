@@ -1,7 +1,7 @@
 import Request from '../request'
 import type { Requests, BapiMethods } from './api'
 import { useBiliStore } from '@/stores'
-import { packFormData, random32Hash, wbiSign } from '../utils'
+import { random32Hash, wbiSign } from '../utils'
 import { ts, tsm } from '../luxon'
 import _ from 'lodash'
 
@@ -28,53 +28,6 @@ const BAPI: BapiMethods = {
         target_id, // 主播 uid
         web_location,
       })
-    },
-    sendMsg: (
-      msg,
-      roomid,
-      room_type = 0,
-      mode = 1,
-      jumpfrom = 0,
-      fontsize = 25,
-      color = 16777215,
-      bubble = 0,
-      reply_mid = 0,
-      reply_attr = 0,
-      replay_dmid = '',
-      reply_type = 0,
-      reply_uname = '',
-      statistics = '{"appId":100,"platform":5}',
-      data_extend = '{"trackid":"-99998"}',
-      web_location = '444.8',
-    ) => {
-      const biliStore = useBiliStore()
-      const bili_jct = biliStore.cookies!.bili_jct
-      return request.live.post(
-        '/msg/send',
-        packFormData({
-          bubble,
-          msg,
-          color,
-          mode,
-          room_type,
-          jumpfrom,
-          reply_mid,
-          reply_attr,
-          replay_dmid,
-          statistics,
-          reply_type,
-          reply_uname,
-          data_extend,
-          fontsize,
-          rnd: ts(),
-          roomid,
-          csrf: bili_jct,
-          csrf_token: bili_jct,
-        }),
-        {
-          params: wbiSign({ web_location }),
-        },
-      )
     },
     likeReport: (room_id, anchor_id, click_time = 1, web_location = '444.8') => {
       const biliStore = useBiliStore()

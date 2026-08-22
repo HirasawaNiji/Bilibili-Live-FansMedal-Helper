@@ -85,17 +85,6 @@ function wbiSign(params: Record<string, {}>): string {
 }
 
 /**
- * 把一个普通对象打包为 FormData
- * @param json 一个不包含嵌套对象的对象
- * @returns FormData
- */
-function packFormData(json: Record<string, {}>): FormData {
-  const formData = new FormData()
-  _.forEach(json, (value, key) => formData.append(key, value.toString()))
-  return formData
-}
-
-/**
  * 遍历一个对象最深层的属性
  * @param obj 要遍历的对象
  * @param fn 回调函数，参数是最深层属性的值和当前路径
@@ -229,7 +218,6 @@ export {
   getFilenameFromUrl,
   addURLParams,
   wbiSign,
-  packFormData,
   deepestIterate,
   getUrlFromFetchInput,
   createFetchInputWithNewUrl,

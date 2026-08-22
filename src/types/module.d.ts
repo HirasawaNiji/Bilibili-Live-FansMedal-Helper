@@ -23,7 +23,6 @@ interface ModulesNeedStatus<T> {
       medalTasks: {
         light: T
         like: T
-        danmu: T
         watch: T
       }
     }
