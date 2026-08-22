@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import type { ModuleStatusTypes } from '@/types'
-import { Loading, Select, CloseBold, Refresh } from '@element-plus/icons-vue'
+import { Clock, Loading, Select, CloseBold, Refresh } from '@element-plus/icons-vue'
 import _ from 'lodash'
 
 const props = defineProps<{
@@ -19,6 +19,8 @@ const isHovered = ref(false)
 
 // 是否运行中
 const isRunning = computed(() => props.status === 'running')
+// 正在等待目标直播间达到执行状态
+const isWaiting = computed(() => props.status === 'waiting')
 // 是否已完成
 const isDone = computed(() => props.status === 'done')
 // 是否发生错误
@@ -27,6 +29,7 @@ const isError = computed(() => props.status === 'error')
 // 图标组件
 const iconComponent = computed(() => {
   if (isRunning.value) return Loading
+  if (isWaiting.value) return Clock
   if (isDone.value) return isHovered.value ? Refresh : Select
   if (isError.value) return CloseBold
   return null
@@ -44,6 +47,7 @@ watch(
     class="status-icon"
     :class="{
       'is-loading': isRunning,
+      waiting: isWaiting,
       done: isDone,
       error: isError,
       'is-hovered': isDone && isHovered,
@@ -71,6 +75,10 @@ watch(
 
 .done {
   color: #1ab059;
+}
+
+.waiting {
+  color: #e6a23c;
 }
 
 .done.is-hovered {

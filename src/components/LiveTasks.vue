@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { useModuleStore, useBiliStore, useUIStore } from '@/stores'
-import { Edit, Delete, SemiSelect } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox, ElTable, type TableInstance } from 'element-plus'
+import { useModuleStore, useBiliStore, useCacheStore, useUIStore } from '@/stores'
+import { Clock, Edit, RefreshRight, SemiSelect } from '@element-plus/icons-vue'
+import { ElMessage, ElTable, type TableInstance } from 'element-plus'
 import helpInfo from '@/library/help-info'
+import BAPI from '@/library/bili-api'
 import { VueDraggable } from 'vue-draggable-plus'
-import { arrayToMap } from '@/library/utils'
+import { arrayToMap, sleep } from '@/library/utils'
 
 interface MedalInfoRow {
   avatar: string
@@ -15,80 +16,95 @@ interface MedalInfoRow {
   roomid: number
 }
 
-type MedalTaskKey = 'light' | 'like' | 'danmu' | 'watch'
-type DanmuTaskKey = 'light' | 'danmu'
+type MedalTaskKey = 'light' | 'like' | 'watch'
 
 const TASK_LABELS: Record<MedalTaskKey, string> = {
   light: '点亮熄灭勋章',
   like: '点赞',
-  danmu: '发弹幕',
   watch: '观看直播',
 }
 
 const moduleStore = useModuleStore()
 const biliStore = useBiliStore()
+const cacheStore = useCacheStore()
 const uiStore = useUIStore()
 
 const medalTableMaxHeight = screen.height * 0.55
-const danmuTableMaxHeight = screen.height * 0.5
 
 const config = moduleStore.moduleConfig.DailyTasks.LiveTasks
 const status = moduleStore.moduleStatus.DailyTasks.LiveTasks
 const reset = moduleStore.moduleReset.DailyTasks.LiveTasks
 
-// ───── 编辑弹幕 ─────
-const medalDanmuPanelVisible = ref<boolean>(false)
-const currentEditingDanmuTask = ref<DanmuTaskKey>('light')
-const danmuTableData = computed(() =>
-  config.medalTasks[currentEditingDanmuTask.value].danmuList.map((danmu) => {
-    return { content: danmu }
-  }),
-)
+// ───── 储蓄亲密度提醒 ─────
+const intimacyReminders = computed(() => cacheStore.freeIntimacyReminders)
+const intimacyReminderRefreshing = ref(false)
 
-const handleOpenDanmuPanel = (key: DanmuTaskKey) => {
-  currentEditingDanmuTask.value = key
-  medalDanmuPanelVisible.value = true
-}
+/** 扫描全部粉丝勋章，刷新储蓄亲密度达到90的提醒名单及其开播状态 */
+const handleRefreshIntimacyReminders = async () => {
+  if (intimacyReminderRefreshing.value) return
+  intimacyReminderRefreshing.value = true
 
-const handleEditDanmu = (index: number, content: string) => {
-  ElMessageBox.prompt('请输入弹幕内容', '修改弹幕', {
-    confirmButtonText: '确认',
-    cancelButtonText: '取消',
-    inputPattern: /^.{1,30}$/,
-    inputErrorMessage: '弹幕内容不得为空且长度不能超过30',
-    inputValue: content,
-    lockScroll: false,
-  })
-    .then(({ value }) => {
-      config.medalTasks[currentEditingDanmuTask.value].danmuList[index] = value
-    })
-    .catch(() => {})
-}
+  try {
+    if (biliStore.fansMedalsMeta.status !== 'loaded') {
+      await moduleStore.rerunModule('Default_FansMedals', true)
+    }
 
-const handleDeleteDanmu = (index: number) => {
-  const list = config.medalTasks[currentEditingDanmuTask.value].danmuList
-  if (list.length === 1) {
-    ElMessage.warning({
-      message: '至少要有一条弹幕',
-      appendTo: '.el-dialog',
-    })
-    return
+    const medals = biliStore.filteredFansMedals
+    let failedCount = 0
+    let liveStatusFailedCount = 0
+
+    for (let i = 0; i < medals.length; i++) {
+      const medal = medals[i]
+      try {
+        const response = await BAPI.live.getActivatedMedalInfo(medal.medal.target_id)
+        if (response.code === 0) {
+          let liveStatus: number | null = medal.room_info.living_status
+
+          // 只为进入提醒名单的主播额外查询实时开播状态，减少无用请求。
+          if (response.data.free_intimacy >= 90) {
+            try {
+              const liveStatusResponse = await BAPI.live.getRoomPlayInfo(medal.room_info.room_id)
+              if (liveStatusResponse.code === 0) {
+                liveStatus = liveStatusResponse.data.live_status
+              } else {
+                liveStatus = null
+                liveStatusFailedCount++
+              }
+            } catch {
+              liveStatus = null
+              liveStatusFailedCount++
+            }
+          }
+
+          cacheStore.updateFreeIntimacyReminder(medal, response.data, liveStatus)
+        } else {
+          failedCount++
+        }
+      } catch {
+        failedCount++
+      }
+
+      if (i < medals.length - 1) await sleep(400)
+    }
+
+    cacheStore.pruneFreeIntimacyReminders(medals.map((medal) => medal.medal.target_id))
+
+    if (failedCount > 0 || liveStatusFailedCount > 0) {
+      const details = [
+        failedCount > 0 ? `${failedCount} 个亲密度查询失败` : '',
+        liveStatusFailedCount > 0 ? `${liveStatusFailedCount} 个开播状态查询失败` : '',
+      ]
+        .filter(Boolean)
+        .join('，')
+      ElMessage.warning(`提醒刷新完成：${details}`)
+    } else {
+      ElMessage.success(
+        `提醒和开播状态刷新完成，当前有 ${intimacyReminders.value.length} 位主播达到90+`,
+      )
+    }
+  } finally {
+    intimacyReminderRefreshing.value = false
   }
-  list.splice(index, 1)
-}
-
-const handleAddDanmu = () => {
-  ElMessageBox.prompt('请输入新增的弹幕内容', '新增弹幕', {
-    confirmButtonText: '确认',
-    cancelButtonText: '取消',
-    inputPattern: /^.{1,30}$/,
-    inputErrorMessage: '弹幕内容不得为空且长度不能超过30',
-    lockScroll: false,
-  })
-    .then(({ value }) => {
-      config.medalTasks[currentEditingDanmuTask.value].danmuList.push(value)
-    })
-    .catch(() => {})
 }
 
 // ───── 编辑名单 ─────
@@ -200,13 +216,74 @@ function handleRowClick(row: MedalInfoRow) {
 
 <template>
   <div>
+    <!-- 储蓄亲密度提醒 -->
+    <el-card class="intimacy-reminder-card" shadow="never">
+      <template #header>
+        <div class="intimacy-reminder-header">
+          <el-text tag="b" type="warning">
+            以下主播储蓄亲密度即将溢出
+            <template v-if="intimacyReminders.length"> · {{ intimacyReminders.length }}人</template>
+          </el-text>
+          <el-button
+            size="small"
+            type="warning"
+            plain
+            :icon="RefreshRight"
+            :loading="intimacyReminderRefreshing"
+            @click="handleRefreshIntimacyReminders"
+          >
+            刷新提醒
+          </el-button>
+        </div>
+      </template>
+
+      <el-table
+        v-if="intimacyReminders.length"
+        :data="intimacyReminders"
+        size="small"
+        max-height="220"
+      >
+        <el-table-column prop="nickName" label="主播" min-width="120" />
+        <el-table-column prop="medalName" label="粉丝牌" min-width="90" />
+        <el-table-column prop="freeIntimacy" label="已储蓄" width="90" align="center">
+          <template #default="scope">
+            <el-tag :type="scope.row.reachLimit ? 'danger' : 'warning'" effect="dark">
+              {{ scope.row.freeIntimacy }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="当前开播状态" width="110" align="center">
+          <template #default="scope">
+            <el-tag v-if="scope.row.liveStatus === 1" type="success" effect="dark">
+              正在直播
+            </el-tag>
+            <el-tag v-else-if="scope.row.liveStatus === 2" type="warning">轮播中</el-tag>
+            <el-tag v-else-if="scope.row.liveStatus === 0" type="info">未开播</el-tag>
+            <el-tag v-else type="danger">状态未知</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="90" align="center">
+          <template #default="scope">
+            <el-link
+              :href="'https://live.bilibili.com/' + scope.row.roomId + '?visit_id='"
+              rel="noreferrer"
+              type="primary"
+              target="_blank"
+            >
+              去投喂
+            </el-link>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-text v-else type="info">
+        暂无即将溢出的提醒。任务查询到亲密度时会自动更新，也可以点击“刷新提醒”扫描全部粉丝牌和开播状态。
+      </el-text>
+    </el-card>
+
     <!-- 点亮熄灭勋章 -->
     <el-row>
       <el-space wrap :size="[8, 0]">
         <el-switch v-model="config.medalTasks.light.enabled" active-text="点亮熄灭勋章" />
-        <el-button type="primary" size="small" :icon="Edit" @click="handleOpenDanmuPanel('light')"
-          >编辑弹幕
-        </el-button>
         <Info :item="helpInfo.DailyTasks.LiveTasks.medalTasks.light" />
         <TaskStatus :status="status.medalTasks.light" @click="reset.medalTasks.light" />
       </el-space>
@@ -284,75 +361,6 @@ function handleRowClick(row: MedalInfoRow) {
 
     <el-divider />
 
-    <!-- 发弹幕 -->
-    <el-row>
-      <el-space wrap :size="[8, 0]">
-        <el-switch v-model="config.medalTasks.danmu.enabled" active-text="发弹幕" />
-        <el-button type="primary" size="small" :icon="Edit" @click="handleOpenDanmuPanel('danmu')"
-          >编辑弹幕
-        </el-button>
-        <Info :item="helpInfo.DailyTasks.LiveTasks.medalTasks.danmu" />
-        <TaskStatus :status="status.medalTasks.danmu" @click="reset.medalTasks.danmu" />
-      </el-space>
-    </el-row>
-    <el-row>
-      <el-space wrap :size="[8, 0]">
-        <el-icon color="var(--el-text-color-secondary)"><SemiSelect /></el-icon>
-        <el-switch
-          v-model="config.medalTasks.danmu.useTargetRounds"
-          inactive-text="跟随每日上限"
-          active-text="完成目标轮次"
-        />
-        <el-input-number
-          class="round-input"
-          v-model="config.medalTasks.danmu.targetRounds"
-          :min="1"
-          :step="1"
-          step-strictly
-          :controls="false"
-          :disabled="!config.medalTasks.danmu.useTargetRounds"
-        />
-        <el-text>轮</el-text>
-        <Info :item="helpInfo.DailyTasks.LiveTasks.medalTasks.rounds" />
-      </el-space>
-    </el-row>
-    <el-row>
-      <el-space wrap :size="[8, 0]">
-        <el-icon color="var(--el-text-color-secondary)"><SemiSelect /></el-icon>
-        <el-switch
-          v-model="config.medalTasks.danmu.onlyWhenNotLiving"
-          active-text="仅在未开播的直播间发弹幕"
-        />
-      </el-space>
-    </el-row>
-    <el-row>
-      <el-space wrap :size="[8, 0]">
-        <el-icon color="var(--el-text-color-secondary)"><SemiSelect /></el-icon>
-        <el-switch
-          v-model="config.medalTasks.danmu.waitUntilNotLiving"
-          active-text="等待下播后再发弹幕"
-          :disabled="!config.medalTasks.danmu.onlyWhenNotLiving"
-        />
-        <Info :item="helpInfo.DailyTasks.LiveTasks.medalTasks.danmuWaitUntilNotLiving" />
-      </el-space>
-    </el-row>
-    <el-row>
-      <el-space wrap :size="[8, 0]">
-        <el-switch
-          v-model="config.medalTasks.danmu.isWhiteList"
-          active-text="白名单"
-          inactive-text="黑名单"
-          @change="(val) => !val && (uiStore.uiConfig.medalInfoPanelIsSortMode.danmu = false)"
-        />
-        <el-button type="primary" size="small" :icon="Edit" @click="handleEditList('danmu')"
-          >编辑名单
-        </el-button>
-        <Info :item="helpInfo.DailyTasks.LiveTasks.medalTasks.list" />
-      </el-space>
-    </el-row>
-
-    <el-divider />
-
     <!-- 观看直播 -->
     <el-row>
       <el-space wrap :size="[8, 0]">
@@ -380,6 +388,16 @@ function handleRowClick(row: MedalInfoRow) {
         />
         <el-text>轮</el-text>
         <Info :item="helpInfo.DailyTasks.LiveTasks.medalTasks.rounds" />
+      </el-space>
+    </el-row>
+    <el-row>
+      <el-space wrap :size="[8, 0]">
+        <el-icon color="var(--el-text-color-secondary)"><Clock /></el-icon>
+        <el-switch
+          v-model="config.medalTasks.watch.waitUntilLiving"
+          active-text="等待开播后再观看"
+        />
+        <Info :item="helpInfo.DailyTasks.LiveTasks.medalTasks.watchWaitUntilLiving" />
       </el-space>
     </el-row>
     <el-row>
@@ -412,32 +430,6 @@ function handleRowClick(row: MedalInfoRow) {
       <el-text>查看。</el-text>
     </el-row>
     <br />
-
-    <!-- 弹窗：编辑弹幕 -->
-    <el-dialog
-      v-model="medalDanmuPanelVisible"
-      :title="`编辑弹幕内容 - ${TASK_LABELS[currentEditingDanmuTask]}`"
-      :lock-scroll="false"
-      width="40%"
-    >
-      <el-table :data="danmuTableData" :max-height="danmuTableMaxHeight">
-        <el-table-column type="index" width="80" />
-        <el-table-column prop="content" label="弹幕内容" />
-        <el-table-column label="操作" width="220" align="center">
-          <template #default="scope">
-            <el-button text :icon="Edit" @click="handleEditDanmu(scope.$index, scope.row.content)">
-              修改
-            </el-button>
-            <el-button text :icon="Delete" type="danger" @click="handleDeleteDanmu(scope.$index)">
-              删除
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <template #footer>
-        <el-button type="primary" @click="handleAddDanmu">新增弹幕</el-button>
-      </template>
-    </el-dialog>
 
     <!-- 弹窗：编辑名单 -->
     <el-dialog
@@ -525,6 +517,18 @@ function handleRowClick(row: MedalInfoRow) {
 </template>
 
 <style scoped>
+.intimacy-reminder-card {
+  margin-bottom: 16px;
+  border-color: var(--el-color-warning-light-5);
+}
+
+.intimacy-reminder-header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .avatar-wrap {
   width: 80px;
   height: 80px;

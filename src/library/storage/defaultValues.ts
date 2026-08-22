@@ -44,23 +44,6 @@ const defaultValues: DefaultValues = {
         medalTasks: {
           light: {
             enabled: false,
-            danmuList: [
-              '[dog]',
-              '[花]',
-              '[妙]',
-              '[哇]',
-              '[爱]',
-              '[大哭]',
-              '[笑哭]',
-              '[捂脸]',
-              '[喝彩]',
-              '[大笑]',
-              '[惊喜]',
-              '[OK]',
-              '[汤圆]',
-              '[墨镜]',
-              `[牛]`,
-            ],
             isWhiteList: false,
             roomidList: [],
             _lastCompleteTime: 0,
@@ -107,6 +90,7 @@ const defaultValues: DefaultValues = {
             enabled: false,
             useTargetRounds: false,
             targetRounds: 1,
+            waitUntilLiving: true,
             isWhiteList: false,
             roomidList: [],
             _lastCompleteTime: 0,
@@ -182,6 +166,7 @@ const defaultValues: DefaultValues = {
   },
   cache: {
     lastAliveHeartBeatTime: 0,
+    freeIntimacyReminders: {},
   },
 }
 

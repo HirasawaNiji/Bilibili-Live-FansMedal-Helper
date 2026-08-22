@@ -120,7 +120,6 @@ export const useModuleStore = defineStore('module', () => {
             moduleConfig.value.DailyTasks.LiveTasks.medalTasks.danmu._lastCompleteTime = 0
 
             rerunModule('Default_FansMedals', true)
-            rerunModule('DailyTask_LiveTask_DanmuTask')
           },
           watch: () => {
             moduleStatus.value.DailyTasks.LiveTasks.medalTasks.watch = ''

@@ -3,6 +3,8 @@ type ModuleStatusTypes =
   | 'running'
   // 任务已完成
   | 'done'
+  // 初始任务已处理，正在等待目标直播间达到执行状态
+  | 'waiting'
   // 发生导致任务彻底无法完成的错误
   | 'error'
   // 模块刚刚开始运行，还没获得一个状态

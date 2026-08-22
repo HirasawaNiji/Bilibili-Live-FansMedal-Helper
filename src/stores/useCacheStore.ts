@@ -1,15 +1,71 @@
 import { acceptHMRUpdate, defineStore } from 'pinia'
-import { toRaw, ref, watch } from 'vue'
+import { computed, toRaw, ref, watch } from 'vue'
 import Storage from '@/library/storage'
 import type { Cache } from '@/types'
+import type { LiveData } from '@/library/bili-api/data'
 import { unsafeWindow } from '$'
 import { tsm } from '@/library/luxon'
+import { useBiliStore } from './useBiliStore'
 
 type ScriptType = 'Main' | 'SubMain' | 'Other'
 
 export const useCacheStore = defineStore('cache', () => {
+  const FREE_INTIMACY_REMINDER_THRESHOLD = 90
   // 缓存
   const cache = ref<Cache>(Storage.getCache())
+
+  /** 当前账号达到提醒阈值的储蓄亲密度，按数值从高到低排列 */
+  const freeIntimacyReminders = computed(() => {
+    const ownerUid = useBiliStore().BilibiliLive?.UID
+    if (!ownerUid) return []
+
+    return Object.values(cache.value.freeIntimacyReminders)
+      .filter((item) => item.ownerUid === ownerUid)
+      .sort((a, b) => b.freeIntimacy - a.freeIntimacy || a.nickName.localeCompare(b.nickName))
+  })
+
+  /** 使用最新任务信息更新一个粉丝勋章的提醒状态 */
+  function updateFreeIntimacyReminder(
+    medal: LiveData.FansMedalPanel.List,
+    data: LiveData.GetActivatedMedalInfo.Data,
+    liveStatus: number | null = medal.room_info.living_status,
+  ): void {
+    const ownerUid = useBiliStore().BilibiliLive?.UID
+    if (!ownerUid) return
+
+    const targetId = medal.medal.target_id
+    const key = `${ownerUid}:${targetId}`
+
+    if (data.free_intimacy < FREE_INTIMACY_REMINDER_THRESHOLD) {
+      delete cache.value.freeIntimacyReminders[key]
+      return
+    }
+
+    cache.value.freeIntimacyReminders[key] = {
+      ownerUid,
+      targetId,
+      roomId: medal.room_info.room_id,
+      nickName: medal.anchor_info.nick_name,
+      medalName: medal.medal.medal_name,
+      freeIntimacy: data.free_intimacy,
+      reachLimit: data.reach_free_intimacy_limit,
+      liveStatus,
+      updatedAt: tsm(),
+    }
+  }
+
+  /** 移除已经不在当前粉丝勋章列表中的旧提醒 */
+  function pruneFreeIntimacyReminders(validTargetIds: number[]): void {
+    const ownerUid = useBiliStore().BilibiliLive?.UID
+    if (!ownerUid) return
+
+    const valid = new Set(validTargetIds)
+    Object.entries(cache.value.freeIntimacyReminders).forEach(([key, item]) => {
+      if (item.ownerUid === ownerUid && !valid.has(item.targetId)) {
+        delete cache.value.freeIntimacyReminders[key]
+      }
+    })
+  }
 
   /**
    * 表示当前 BLTH 的类型
@@ -72,6 +128,9 @@ export const useCacheStore = defineStore('cache', () => {
 
   return {
     cache,
+    freeIntimacyReminders,
+    updateFreeIntimacyReminder,
+    pruneFreeIntimacyReminders,
     currentScriptType,
     startMainBLTHAliveHeartBeat,
     checkCurrentScriptType,

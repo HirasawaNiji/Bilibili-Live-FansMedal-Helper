@@ -1,5 +1,5 @@
 import BaseModule from '@/modules/BaseModule'
-import { useBiliStore, useModuleStore } from '@/stores'
+import { useBiliStore, useCacheStore, useModuleStore } from '@/stores'
 import { watch } from 'vue'
 import type {
   LiveStatusSnapshot,
@@ -513,14 +513,14 @@ class MedalModule extends BaseModule {
    *
    * @param roomids 待探测的直播间ID列表
    * @param targetPredicate 目标状态判断函数
-   * @param runOne 执行单个直播间任务的回调（跳过执行前直播状态校验）
+   * @param runOne 执行单个直播间任务的回调（跳过首次执行前直播状态校验）
+   *
+   * 长时间任务执行期间状态可能再次变化，回调仍可返回 `requeue`。
    */
   protected async runWaitingRound(
     roomids: number[],
     targetPredicate: (liveStatus: number) => boolean,
-    runOne: (
-      medal: LiveData.FansMedalPanel.List,
-    ) => Promise<Exclude<AfterExecutionAction, 'requeue'>>,
+    runOne: (medal: LiveData.FansMedalPanel.List) => Promise<AfterExecutionAction>,
   ): Promise<BatchExecutionResult> {
     const biliStore = useBiliStore()
 
@@ -574,6 +574,8 @@ class MedalModule extends BaseModule {
 
       if (action === 'stop' || action === 'stopAndMarkUncompleted') {
         return { stop: true, markUncompleted: action === 'stopAndMarkUncompleted' }
+      } else if (action === 'requeue') {
+        requeueRoomids.push(roomid)
       } else if (action === 'markUncompleted') {
         markUncompleted = true
       }
@@ -596,6 +598,12 @@ class MedalModule extends BaseModule {
         const response = await BAPI.live.getActivatedMedalInfo(target_id)
         this.logger.log(`BAPI.live.getActivatedMedalInfo(${target_id}) response`, response)
         if (response.code === 0) {
+          const medal = useBiliStore().filteredFansMedals.find(
+            (item) => item.medal.target_id === target_id,
+          )
+          if (medal) {
+            useCacheStore().updateFreeIntimacyReminder(medal, response.data)
+          }
           return response.data
         } else {
           this.logger.error(`BAPI.live.getActivatedMedalInfo(${target_id}) 失败`, response.message)
@@ -688,7 +696,7 @@ class MedalModule extends BaseModule {
 
     const moduleStore = useModuleStore()
     const lightStatus = moduleStore.moduleStatus.DailyTasks.LiveTasks.medalTasks.light
-    if (lightStatus === 'done' || lightStatus === 'error') return
+    if (lightStatus === 'done' || lightStatus === 'waiting' || lightStatus === 'error') return
 
     this.logger.log('等待点亮熄灭勋章任务完成后再执行')
 
@@ -696,7 +704,7 @@ class MedalModule extends BaseModule {
       const unwatch = watch(
         () => moduleStore.moduleStatus.DailyTasks.LiveTasks.medalTasks.light,
         (newStatus) => {
-          if (newStatus === 'done' || newStatus === 'error') {
+          if (newStatus === 'done' || newStatus === 'waiting' || newStatus === 'error') {
             unwatch()
             resolve()
           }

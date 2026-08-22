@@ -7,6 +7,7 @@ import { sleep } from '@/library/utils'
 import type { ModuleStatusTypes, RunAtMoment } from '@/types'
 import MedalModule from '@/modules/dailyTasks/liveTasks/medalTasks/MedalModule'
 import type { LiveData } from '@/library/bili-api/data'
+import type { AfterExecutionAction, BatchExecutionResult, GroupedMedals } from './types'
 
 interface SpyderData {
   benchmark: string
@@ -295,20 +296,32 @@ class WatchTask extends MedalModule {
   private playerStore = usePlayerStore()
 
   /**
-   * 获取已点亮的粉丝勋章
+   * 获取已点亮的粉丝勋章，并按是否正在直播分组
    */
-  private getMedals(): LiveData.FansMedalPanel.List[] {
+  private getMedals(): GroupedMedals<'readyMedals' | 'waitingMedals'> {
     const fansMedals = useBiliStore().filteredFansMedals
+    const result: GroupedMedals<'readyMedals' | 'waitingMedals'> = {
+      readyMedals: [],
+      waitingMedals: [],
+    }
 
-    const result = fansMedals.filter(
-      (medal) =>
+    fansMedals.forEach((medal) => {
+      if (
         this.SHARED_MEDAL_FILTERS.meetWhiteOrBlackList(medal) &&
         this.SHARED_MEDAL_FILTERS.levelLt120(medal) &&
-        this.SHARED_MEDAL_FILTERS.isLighted(medal),
-    )
+        this.SHARED_MEDAL_FILTERS.isLighted(medal)
+      ) {
+        if (this.SHARED_MEDAL_FILTERS.isLiving(medal)) {
+          result.readyMedals.push(medal)
+        } else if (this.config.waitUntilLiving) {
+          result.waitingMedals.push(medal)
+        }
+      }
+    })
 
     if (this.config.isWhiteList) {
-      this.sortMedals(result)
+      this.sortMedals(result.readyMedals)
+      this.sortMedals(result.waitingMedals)
     }
 
     return result
@@ -342,6 +355,193 @@ class WatchTask extends MedalModule {
     }
   }
 
+  /**
+   * 执行单个直播间的观看任务
+   *
+   * 每次只观看一轮（通常为 15 分钟），随后读取服务端任务进度；下一轮开始前
+   * 再次校验主播仍在直播，避免主播下播后继续长时间发送无效心跳。
+   */
+  private async executeWatchTask(
+    medal: LiveData.FansMedalPanel.List,
+    skipPreVerify = false,
+  ): Promise<AfterExecutionAction> {
+    if (MedalModule.shouldStopForCrossDay()) {
+      this.logger.log('即将或刚刚发生跨天，提早结束本轮观看直播任务')
+      return 'stopAndMarkUncompleted'
+    }
+
+    const roomid = medal.room_info.room_id
+    const uid = medal.medal.target_id
+    const nick_name = medal.anchor_info.nick_name
+    const medal_name = medal.medal.medal_name
+
+    let medalData = await this.fetchMedalData(uid)
+    if (!medalData) {
+      this.logger.error(
+        `粉丝勋章【${medal_name}】 无法获取主播【${nick_name}】（UID：${uid}，直播间：${roomid}）的粉丝团升级任务信息，跳过观看直播任务`,
+      )
+      return 'skipSleep'
+    }
+
+    if (medalData.reach_free_intimacy_limit) {
+      this.logger.warn(
+        `粉丝勋章【${medal_name}】（主播【${nick_name}】，UID：${uid}，直播间：${roomid}）已达到储蓄亲密度上限（已储蓄 ${medalData.free_intimacy} 亲密度，投喂一个粉丝灯牌即可领取这些亲密度），无法通过观看直播获取更多亲密度，跳过观看直播任务`,
+      )
+      return 'skipSleep'
+    }
+
+    let item = MedalModule.findTaskInfo(medalData.task_info, 'watchLive')
+    if (!item) {
+      this.logger.error(
+        `粉丝勋章【${medal_name}】 无法在主播【${nick_name}】（UID：${uid}，直播间：${roomid}）的粉丝团升级任务信息中找到观看直播任务，跳过观看直播任务`,
+      )
+      return 'skipSleep'
+    }
+
+    if (item.is_done) return 'skipSleep'
+
+    let parsed = MedalModule.parseDailyLimit(item.sub_title)
+    if (!parsed) {
+      this.logger.error(
+        `粉丝勋章【${medal_name}】 无法解析主播【${nick_name}】（UID：${uid}，直播间：${roomid}）的观看直播任务的每日上限信息，跳过观看直播任务`,
+      )
+      return 'skipSleep'
+    }
+
+    const minutes = MedalModule.parseTitleCount(item.title) ?? 15
+    const target = this.config.useTargetRounds
+      ? Math.min(parsed.limit, this.config.targetRounds)
+      : parsed.limit
+
+    if (parsed.current >= target) return 'skipSleep'
+
+    if (!skipPreVerify) {
+      const verdict = await this.preExecuteVerify(roomid, (liveStatus) => liveStatus === 1)
+
+      if (verdict === 'error') {
+        this.logger.error(
+          `粉丝勋章【${medal_name}】 执行前校验：无法获取主播【${nick_name}】（UID：${uid}，直播间：${roomid}）的直播状态，${this.config.waitUntilLiving ? '回到等待队列' : '跳过观看直播任务'}；可能遭遇风控，休眠 5 分钟再继续`,
+        )
+        await sleep(300e3)
+        return this.config.waitUntilLiving ? 'requeue' : 'skipSleep'
+      } else if (verdict === 'fail') {
+        this.logger.log(
+          `粉丝勋章【${medal_name}】 执行前校验：主播【${nick_name}】（UID：${uid}，直播间：${roomid}）当前不在直播，${this.config.waitUntilLiving ? '回到等待队列' : '跳过观看直播任务'}`,
+        )
+        return this.config.waitUntilLiving ? 'requeue' : 'skipSleep'
+      }
+    }
+
+    const [area_id, parent_area_id] = await this.getAreaInfo(roomid)
+    if (area_id <= 0 || parent_area_id <= 0) {
+      this.logger.error(
+        `粉丝勋章【${medal_name}】 的直播间 ${roomid} 没有有效直播分区，跳过观看直播任务`,
+      )
+      return 'markUncompleted'
+    }
+
+    while (parsed.current < target) {
+      if (MedalModule.shouldStopForCrossDay()) {
+        this.logger.log('即将或刚刚发生跨天，提早结束本轮观看直播任务')
+        return 'stopAndMarkUncompleted'
+      }
+
+      // 除从等待队列刚刚确认开播后的第一轮外，每轮开始前都重新确认直播状态。
+      if (!skipPreVerify || parsed.current > 0) {
+        const verdict = await this.preExecuteVerify(roomid, (liveStatus) => liveStatus === 1)
+        if (verdict !== 'pass') {
+          this.logger.log(
+            `粉丝勋章【${medal_name}】 主播【${nick_name}】（UID：${uid}，直播间：${roomid}）在下一轮观看前已不在直播或状态获取失败，${this.config.waitUntilLiving ? '回到等待队列' : '停止本次观看'}`,
+          )
+          return this.config.waitUntilLiving ? 'requeue' : 'markUncompleted'
+        }
+      }
+
+      const previousProgress = parsed.current
+      this.logger.log(
+        `粉丝勋章【${medal_name}】 开始直播间 ${roomid}（主播【${nick_name}】，UID：${uid}）的第 ${previousProgress + 1} 轮观看直播任务，本轮目标 ${minutes} 分钟`,
+      )
+
+      const hasWatchingProgress = await new RoomHeart(
+        roomid,
+        area_id,
+        parent_area_id,
+        uid,
+        minutes * 60,
+      ).start()
+
+      if (!hasWatchingProgress) return 'markUncompleted'
+
+      await sleep(MedalModule.WAIT_MEDAL_UPDATE_DELAY)
+      medalData = await this.fetchMedalData(uid)
+      if (!medalData) {
+        this.logger.error(
+          `粉丝勋章【${medal_name}】 完成一轮观看后无法获取最新任务进度，停止该房间，避免继续无效观看`,
+        )
+        return 'markUncompleted'
+      }
+
+      item = MedalModule.findTaskInfo(medalData.task_info, 'watchLive')
+      parsed = item ? MedalModule.parseDailyLimit(item.sub_title) : null
+      if (!item || !parsed) {
+        this.logger.error(
+          `粉丝勋章【${medal_name}】 完成一轮观看后无法解析最新任务进度，停止该房间，避免继续无效观看`,
+        )
+        return 'markUncompleted'
+      }
+
+      if (item.is_done || parsed.current >= target) {
+        this.logger.log(
+          `粉丝勋章【${medal_name}】 观看直播任务已达到目标进度（${item.sub_title}）`,
+        )
+        return null
+      }
+
+      if (parsed.current <= previousProgress) {
+        const verdict = await this.preExecuteVerify(roomid, (liveStatus) => liveStatus === 1)
+        if (verdict !== 'pass' && this.config.waitUntilLiving) {
+          this.logger.log(
+            `粉丝勋章【${medal_name}】 本轮观看未计入且主播已经下播，回到等待队列`,
+          )
+          return 'requeue'
+        }
+
+        this.logger.warn(
+          `粉丝勋章【${medal_name}】 已发送 ${minutes} 分钟观看心跳，但B站任务进度仍为 ${item.sub_title}；停止该房间，避免继续无效观看`,
+        )
+        return 'markUncompleted'
+      }
+
+      this.logger.log(
+        `粉丝勋章【${medal_name}】 本轮观看已由B站确认，当前进度：${item.sub_title}`,
+      )
+      skipPreVerify = false
+    }
+
+    return null
+  }
+
+  /** 顺序执行多个正在直播的房间 */
+  private async executeWatchTasks(
+    medals: LiveData.FansMedalPanel.List[],
+  ): Promise<BatchExecutionResult> {
+    let markUncompleted = false
+    const requeueRoomids: number[] = []
+
+    for (const medal of medals) {
+      const action = await this.executeWatchTask(medal)
+      if (action === 'stop' || action === 'stopAndMarkUncompleted') {
+        return { stop: true, markUncompleted: action === 'stopAndMarkUncompleted' }
+      } else if (action === 'requeue') {
+        requeueRoomids.push(medal.room_info.room_id)
+      } else if (action === 'markUncompleted') {
+        markUncompleted = true
+      }
+    }
+
+    return { markUncompleted, requeueRoomids }
+  }
+
   public async run(): Promise<void> {
     this.logger.log('观看直播模块开始运行')
 
@@ -361,113 +561,49 @@ class WatchTask extends MedalModule {
       }
 
       this.status = 'running'
-      const fansMedals = this.getMedals()
+      MedalModule.initSnapshotsWithFansMedalsData()
 
-      if (fansMedals.length > 0) {
-        let allCompleted = true
+      const { readyMedals, waitingMedals } = this.getMedals()
+      let pendingRoomids = waitingMedals.map((medal) => medal.room_info.room_id)
+      let allCompleted = true
 
-        for (let i = 0; i < fansMedals.length; i++) {
-          if (isNowAfter(23, 55) || isNowBefore(0, 5)) {
-            this.logger.log('即将或刚刚发生跨天，提早结束本轮观看直播任务')
-            allCompleted = false
-            break
-          }
+      const { stop, markUncompleted, requeueRoomids } = await this.executeWatchTasks(readyMedals)
+      if (markUncompleted) allCompleted = false
+      if (requeueRoomids) pendingRoomids.push(...requeueRoomids)
 
-          const medal = fansMedals[i]
-          const roomid = medal.room_info.room_id
-          const uid = medal.medal.target_id
-          const nick_name = medal.anchor_info.nick_name
-          const medal_name = medal.medal.medal_name
+      if (!stop && this.config.waitUntilLiving) {
+        while (pendingRoomids.length > 0) {
+          const result = await this.runWaitingRound(
+            pendingRoomids,
+            (liveStatus) => liveStatus === 1,
+            (medal) => this.executeWatchTask(medal, true),
+          )
 
-          const medalData = await this.fetchMedalData(uid)
-          if (!medalData) {
-            this.logger.error(
-              `粉丝勋章【${medal_name}】 无法获取主播【${nick_name}】（UID：${uid}，直播间：${roomid}）的粉丝团升级任务信息，跳过观看直播任务`,
-            )
-            continue
-          }
+          if (result.markUncompleted) allCompleted = false
+          if (result.stop) break
 
-          if (medalData.reach_free_intimacy_limit) {
-            this.logger.warn(
-              `粉丝勋章【${medal_name}】（主播【${nick_name}】，UID：${uid}，直播间：${roomid}）已达到储蓄亲密度上限（已储蓄 ${medalData.free_intimacy} 亲密度，投喂一个粉丝灯牌即可领取这些亲密度），无法通过观看直播获取更多亲密度，跳过观看直播任务`,
-            )
-            continue
-          }
-
-          const item = MedalModule.findTaskInfo(medalData.task_info, 'watchLive')
-          if (!item) {
-            this.logger.error(
-              `粉丝勋章【${medal_name}】 无法在主播【${nick_name}】（UID：${uid}，直播间：${roomid}）的粉丝团升级任务信息中找到观看直播任务，跳过观看直播任务`,
-            )
-            continue
-          }
-
-          if (item.is_done) continue
-
-          const parsed = MedalModule.parseDailyLimit(item.sub_title)
-          if (!parsed) {
-            this.logger.error(
-              `粉丝勋章【${medal_name}】 无法解析主播【${nick_name}】（UID：${uid}，直播间：${roomid}）的观看直播任务的每日上限信息，跳过观看直播任务`,
-            )
-            continue
-          }
-          if (parsed.current >= parsed.limit) continue
-
-          // 一轮的观看时间（默认 15 分钟）
-          const minutes = MedalModule.parseTitleCount(item.title) ?? 15
-          // 目标轮次（每日上限或配置的目标轮次）
-          const target = this.config.useTargetRounds
-            ? Math.min(parsed.limit, this.config.targetRounds)
-            : parsed.limit
-          // 剩余观看秒数 = (目标轮次 - 已完成轮次) × 分钟数 × 60s
-          const remainingSeconds = (target - parsed.current) * minutes * 60
-
-          if (remainingSeconds <= 0) {
-            // 今日观看时间已达到目标值，跳过
-            continue
-          }
-
-          const [area_id, parent_area_id] = await this.getAreaInfo(roomid)
-
-          if (area_id > 0 && parent_area_id > 0) {
-            // area_id 和 parent_area_id 都大于 0，说明直播间设置了分区，心跳有效
-            this.logger.log(
-              `粉丝勋章【${medal_name}】 开始直播间 ${roomid}（主播【${nick_name}】，UID：${uid}）的观看直播任务，目标时长 ${remainingSeconds / 60} 分钟`,
-            )
-
-            const hasWatchingProgress = await new RoomHeart(
-              roomid,
-              area_id,
-              parent_area_id,
-              uid,
-              remainingSeconds,
-            ).start()
-
-            if (hasWatchingProgress) {
-              const verifiedCompleted = await this.confirmTaskCompletedAfterUpdate(
-                medal,
-                'watchLive',
-                this.config.useTargetRounds ? target : undefined,
-              )
-              if (!verifiedCompleted) {
-                allCompleted = false
-              }
-            } else {
-              allCompleted = false
+          pendingRoomids = result.requeueRoomids!
+          if (pendingRoomids.length > 0) {
+            const medalMap = useBiliStore().filteredFansMedalsMap
+            const pendingRoomsInfo: Record<number, string | undefined> = {}
+            for (const roomid of pendingRoomids) {
+              pendingRoomsInfo[roomid] = medalMap.get(roomid)?.anchor_info.nick_name
             }
+            this.logger.log(
+              `仍有 ${pendingRoomids.length} 个直播间未开播，${MedalModule.WAIT_POLL_INTERVAL / 1000} 秒后继续检查`,
+              { pendingRoomsInfo },
+            )
+            await sleep(MedalModule.WAIT_POLL_INTERVAL)
           }
         }
+      }
 
-        if (allCompleted) {
-          this.config._lastCompleteTime = tsm()
-          this.logger.log('观看直播任务已完成')
-          this.status = 'done'
-        } else {
-          this.status = ''
-        }
-      } else {
-        this.status = 'done'
+      if (allCompleted) {
         this.config._lastCompleteTime = tsm()
+        this.logger.log('观看直播任务已完成')
+        this.status = 'done'
+      } else {
+        this.status = ''
       }
     } else {
       if (isNowBefore(0, 5)) {

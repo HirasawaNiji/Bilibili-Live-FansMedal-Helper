@@ -23,7 +23,6 @@ interface ModuleConfig {
       medalTasks: {
         light: {
           enabled: boolean
-          danmuList: string[]
           isWhiteList: boolean
           roomidList: number[]
           _lastCompleteTime: number
@@ -54,6 +53,7 @@ interface ModuleConfig {
           enabled: boolean
           useTargetRounds: boolean
           targetRounds: number
+          waitUntilLiving: boolean
           isWhiteList: boolean
           roomidList: number[]
           _lastCompleteTime: number
@@ -151,6 +151,20 @@ interface UiConfig {
 
 interface Cache {
   lastAliveHeartBeatTime: number
+  freeIntimacyReminders: Record<string, FreeIntimacyReminder>
 }
 
-export { ModuleConfig, UiConfig, Cache, MenuIndex }
+interface FreeIntimacyReminder {
+  ownerUid: number
+  targetId: number
+  roomId: number
+  nickName: string
+  medalName: string
+  freeIntimacy: number
+  reachLimit: boolean
+  /** 0 未开播，1 直播中，2 轮播中，null 状态查询失败 */
+  liveStatus: number | null
+  updatedAt: number
+}
+
+export { ModuleConfig, UiConfig, Cache, FreeIntimacyReminder, MenuIndex }
