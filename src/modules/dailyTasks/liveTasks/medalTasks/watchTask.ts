@@ -1,6 +1,6 @@
 import { delayToNextMoment, isNowAfter, isNowBefore, isTimestampToday, tsm } from '@/library/luxon'
 import BAPI from '@/library/bili-api'
-import { useBiliStore, useModuleStore, usePlayerStore } from '@/stores'
+import { useBiliStore, useModuleStore, usePlayerStore, useRuntimeStatusStore } from '@/stores'
 import Logger from '@/library/logger'
 import CryptoJS from 'crypto-js'
 import { sleep } from '@/library/utils'
@@ -294,6 +294,7 @@ class WatchTask extends MedalModule {
   }
 
   private playerStore = usePlayerStore()
+  private runtimeStatus = useRuntimeStatusStore()
 
   /**
    * 获取已点亮的粉丝勋章，并按是否正在直播分组
@@ -374,18 +375,26 @@ class WatchTask extends MedalModule {
     const uid = medal.medal.target_id
     const nick_name = medal.anchor_info.nick_name
     const medal_name = medal.medal.medal_name
+    this.runtimeStatus.setCurrent('watch', medal, '正在检查观看任务进度')
 
     let medalData = await this.fetchMedalData(uid)
     if (!medalData) {
       this.logger.error(
         `粉丝勋章【${medal_name}】 无法获取主播【${nick_name}】（UID：${uid}，直播间：${roomid}）的粉丝团升级任务信息，跳过观看直播任务`,
       )
+      this.runtimeStatus.setItemStatus('watch', medal, 'failed', '无法获取观看任务信息')
       return 'skipSleep'
     }
 
     if (medalData.reach_free_intimacy_limit) {
       this.logger.warn(
         `粉丝勋章【${medal_name}】（主播【${nick_name}】，UID：${uid}，直播间：${roomid}）已达到储蓄亲密度上限（已储蓄 ${medalData.free_intimacy} 亲密度，投喂一个粉丝灯牌即可领取这些亲密度），无法通过观看直播获取更多亲密度，跳过观看直播任务`,
+      )
+      this.runtimeStatus.setItemStatus(
+        'watch',
+        medal,
+        'skipped',
+        `储蓄亲密度已达上限（${medalData.free_intimacy}），需先投喂灯牌`,
       )
       return 'skipSleep'
     }
@@ -395,16 +404,21 @@ class WatchTask extends MedalModule {
       this.logger.error(
         `粉丝勋章【${medal_name}】 无法在主播【${nick_name}】（UID：${uid}，直播间：${roomid}）的粉丝团升级任务信息中找到观看直播任务，跳过观看直播任务`,
       )
+      this.runtimeStatus.setItemStatus('watch', medal, 'failed', '没有找到观看直播任务信息')
       return 'skipSleep'
     }
 
-    if (item.is_done) return 'skipSleep'
+    if (item.is_done) {
+      this.runtimeStatus.setItemStatus('watch', medal, 'completed', 'B站显示观看任务已经完成')
+      return 'skipSleep'
+    }
 
     let parsed = MedalModule.parseDailyLimit(item.sub_title)
     if (!parsed) {
       this.logger.error(
         `粉丝勋章【${medal_name}】 无法解析主播【${nick_name}】（UID：${uid}，直播间：${roomid}）的观看直播任务的每日上限信息，跳过观看直播任务`,
       )
+      this.runtimeStatus.setItemStatus('watch', medal, 'failed', '无法解析观看任务进度')
       return 'skipSleep'
     }
 
@@ -413,7 +427,15 @@ class WatchTask extends MedalModule {
       ? Math.min(parsed.limit, this.config.targetRounds)
       : parsed.limit
 
-    if (parsed.current >= target) return 'skipSleep'
+    if (parsed.current >= target) {
+      this.runtimeStatus.setItemStatus(
+        'watch',
+        medal,
+        'completed',
+        `观看任务已完成（${item.sub_title}）`,
+      )
+      return 'skipSleep'
+    }
 
     if (!skipPreVerify) {
       const verdict = await this.preExecuteVerify(roomid, (liveStatus) => liveStatus === 1)
@@ -422,11 +444,23 @@ class WatchTask extends MedalModule {
         this.logger.error(
           `粉丝勋章【${medal_name}】 执行前校验：无法获取主播【${nick_name}】（UID：${uid}，直播间：${roomid}）的直播状态，${this.config.waitUntilLiving ? '回到等待队列' : '跳过观看直播任务'}；可能遭遇风控，休眠 5 分钟再继续`,
         )
+        this.runtimeStatus.setItemStatus(
+          'watch',
+          medal,
+          this.config.waitUntilLiving ? 'waiting' : 'skipped',
+          '直播状态查询失败，等待后续重试',
+        )
         await sleep(300e3)
         return this.config.waitUntilLiving ? 'requeue' : 'skipSleep'
       } else if (verdict === 'fail') {
         this.logger.log(
           `粉丝勋章【${medal_name}】 执行前校验：主播【${nick_name}】（UID：${uid}，直播间：${roomid}）当前不在直播，${this.config.waitUntilLiving ? '回到等待队列' : '跳过观看直播任务'}`,
+        )
+        this.runtimeStatus.setItemStatus(
+          'watch',
+          medal,
+          this.config.waitUntilLiving ? 'waiting' : 'skipped',
+          this.config.waitUntilLiving ? '主播未开播，等待开播后观看' : '主播未开播，已跳过',
         )
         return this.config.waitUntilLiving ? 'requeue' : 'skipSleep'
       }
@@ -437,6 +471,7 @@ class WatchTask extends MedalModule {
       this.logger.error(
         `粉丝勋章【${medal_name}】 的直播间 ${roomid} 没有有效直播分区，跳过观看直播任务`,
       )
+      this.runtimeStatus.setItemStatus('watch', medal, 'failed', '直播间没有有效的直播分区')
       return 'markUncompleted'
     }
 
@@ -453,6 +488,12 @@ class WatchTask extends MedalModule {
           this.logger.log(
             `粉丝勋章【${medal_name}】 主播【${nick_name}】（UID：${uid}，直播间：${roomid}）在下一轮观看前已不在直播或状态获取失败，${this.config.waitUntilLiving ? '回到等待队列' : '停止本次观看'}`,
           )
+          this.runtimeStatus.setItemStatus(
+            'watch',
+            medal,
+            this.config.waitUntilLiving ? 'waiting' : 'failed',
+            this.config.waitUntilLiving ? '主播已经下播，返回等待队列' : '主播已经下播，观看未完成',
+          )
           return this.config.waitUntilLiving ? 'requeue' : 'markUncompleted'
         }
       }
@@ -460,6 +501,13 @@ class WatchTask extends MedalModule {
       const previousProgress = parsed.current
       this.logger.log(
         `粉丝勋章【${medal_name}】 开始直播间 ${roomid}（主播【${nick_name}】，UID：${uid}）的第 ${previousProgress + 1} 轮观看直播任务，本轮目标 ${minutes} 分钟`,
+      )
+      this.runtimeStatus.setCurrent(
+        'watch',
+        medal,
+        `正在观看直播，本轮目标 ${minutes} 分钟`,
+        previousProgress + 1,
+        target,
       )
 
       const hasWatchingProgress = await new RoomHeart(
@@ -470,7 +518,10 @@ class WatchTask extends MedalModule {
         minutes * 60,
       ).start()
 
-      if (!hasWatchingProgress) return 'markUncompleted'
+      if (!hasWatchingProgress) {
+        this.runtimeStatus.setItemStatus('watch', medal, 'failed', '观看心跳执行失败')
+        return 'markUncompleted'
+      }
 
       await sleep(MedalModule.WAIT_MEDAL_UPDATE_DELAY)
       medalData = await this.fetchMedalData(uid)
@@ -478,6 +529,7 @@ class WatchTask extends MedalModule {
         this.logger.error(
           `粉丝勋章【${medal_name}】 完成一轮观看后无法获取最新任务进度，停止该房间，避免继续无效观看`,
         )
+        this.runtimeStatus.setItemStatus('watch', medal, 'failed', '完成一轮后无法获取最新任务进度')
         return 'markUncompleted'
       }
 
@@ -487,12 +539,17 @@ class WatchTask extends MedalModule {
         this.logger.error(
           `粉丝勋章【${medal_name}】 完成一轮观看后无法解析最新任务进度，停止该房间，避免继续无效观看`,
         )
+        this.runtimeStatus.setItemStatus('watch', medal, 'failed', '完成一轮后无法解析最新任务进度')
         return 'markUncompleted'
       }
 
       if (item.is_done || parsed.current >= target) {
-        this.logger.log(
-          `粉丝勋章【${medal_name}】 观看直播任务已达到目标进度（${item.sub_title}）`,
+        this.logger.log(`粉丝勋章【${medal_name}】 观看直播任务已达到目标进度（${item.sub_title}）`)
+        this.runtimeStatus.setItemStatus(
+          'watch',
+          medal,
+          'completed',
+          `观看任务已完成（${item.sub_title}）`,
         )
         return null
       }
@@ -500,8 +557,12 @@ class WatchTask extends MedalModule {
       if (parsed.current <= previousProgress) {
         const verdict = await this.preExecuteVerify(roomid, (liveStatus) => liveStatus === 1)
         if (verdict !== 'pass' && this.config.waitUntilLiving) {
-          this.logger.log(
-            `粉丝勋章【${medal_name}】 本轮观看未计入且主播已经下播，回到等待队列`,
+          this.logger.log(`粉丝勋章【${medal_name}】 本轮观看未计入且主播已经下播，回到等待队列`)
+          this.runtimeStatus.setItemStatus(
+            'watch',
+            medal,
+            'waiting',
+            '本轮未计入且主播已下播，等待重新开播',
           )
           return 'requeue'
         }
@@ -509,15 +570,27 @@ class WatchTask extends MedalModule {
         this.logger.warn(
           `粉丝勋章【${medal_name}】 已发送 ${minutes} 分钟观看心跳，但B站任务进度仍为 ${item.sub_title}；停止该房间，避免继续无效观看`,
         )
+        this.runtimeStatus.setItemStatus(
+          'watch',
+          medal,
+          'failed',
+          `已观看 ${minutes} 分钟，但B站进度未增长（${item.sub_title}）`,
+        )
         return 'markUncompleted'
       }
 
-      this.logger.log(
-        `粉丝勋章【${medal_name}】 本轮观看已由B站确认，当前进度：${item.sub_title}`,
+      this.logger.log(`粉丝勋章【${medal_name}】 本轮观看已由B站确认，当前进度：${item.sub_title}`)
+      this.runtimeStatus.setCurrent(
+        'watch',
+        medal,
+        `第 ${parsed.current} 轮已确认，准备继续观看`,
+        parsed.current,
+        target,
       )
       skipPreVerify = false
     }
 
+    this.runtimeStatus.setItemStatus('watch', medal, 'completed', '观看任务已达到目标轮次')
     return null
   }
 
@@ -548,6 +621,11 @@ class WatchTask extends MedalModule {
     await this.playerStore.waitForLiveStatus(0, {
       onNeedWait: () => {
         this.logger.log('当前直播间正在直播，直播结束后再执行观看直播任务')
+        this.runtimeStatus.setTaskPhase(
+          'watch',
+          'waiting',
+          '当前打开的直播间正在直播，等待该直播间下播后启动观看任务',
+        )
       },
     })
 
@@ -557,6 +635,7 @@ class WatchTask extends MedalModule {
       if (!(await MedalModule.waitForFansMedals())) {
         this.logger.error('粉丝勋章数据不存在，不执行观看直播任务')
         this.status = 'error'
+        this.runtimeStatus.setTaskPhase('watch', 'error', '粉丝勋章数据不存在，观看任务未运行')
         return
       }
 
@@ -564,6 +643,7 @@ class WatchTask extends MedalModule {
       MedalModule.initSnapshotsWithFansMedalsData()
 
       const { readyMedals, waitingMedals } = this.getMedals()
+      this.runtimeStatus.beginTask('watch', readyMedals, waitingMedals)
       let pendingRoomids = waitingMedals.map((medal) => medal.room_info.room_id)
       let allCompleted = true
 
@@ -573,6 +653,11 @@ class WatchTask extends MedalModule {
 
       if (!stop && this.config.waitUntilLiving) {
         while (pendingRoomids.length > 0) {
+          this.runtimeStatus.setTaskPhase(
+            'watch',
+            'waiting',
+            `还有 ${pendingRoomids.length} 位主播未开播，正在等待观看`,
+          )
           const result = await this.runWaitingRound(
             pendingRoomids,
             (liveStatus) => liveStatus === 1,
@@ -602,8 +687,10 @@ class WatchTask extends MedalModule {
         this.config._lastCompleteTime = tsm()
         this.logger.log('观看直播任务已完成')
         this.status = 'done'
+        this.runtimeStatus.setTaskPhase('watch', 'completed', '观看直播任务已全部完成')
       } else {
         this.status = ''
+        this.runtimeStatus.setTaskPhase('watch', 'waiting', '仍有观看直播任务未完成')
       }
     } else {
       if (isNowBefore(0, 5)) {
@@ -611,6 +698,7 @@ class WatchTask extends MedalModule {
       } else {
         this.logger.log('今天已经完成过观看直播任务了')
         this.status = 'done'
+        this.runtimeStatus.setTaskPhase('watch', 'completed', '今天已经完成过观看直播任务')
       }
     }
 
