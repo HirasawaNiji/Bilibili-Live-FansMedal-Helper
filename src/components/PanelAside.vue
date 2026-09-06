@@ -23,6 +23,11 @@ const items: MenuItem[] = [
     index: 'RealtimeStatus',
   },
   {
+    icon: 'Calendar',
+    title: '每周小结',
+    index: 'WeeklySummary',
+  },
+  {
     icon: 'Tasks',
     title: '每日任务',
     index: 'DailyTasks', // 有子菜单，index 无所谓

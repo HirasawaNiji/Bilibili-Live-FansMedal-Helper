@@ -8,6 +8,8 @@ import type { ModuleStatusTypes, RunAtMoment } from '@/types'
 import MedalModule from '@/modules/dailyTasks/liveTasks/medalTasks/MedalModule'
 import type { LiveData } from '@/library/bili-api/data'
 import type { AfterExecutionAction, BatchExecutionResult, GroupedMedals } from './types'
+import { useWeeklyMedalStore } from '@/stores/useWeeklyMedalStore'
+import { runWeeklyWatchQueue } from '@/library/weekly-watch-scheduler'
 
 interface SpyderData {
   benchmark: string
@@ -295,6 +297,7 @@ class WatchTask extends MedalModule {
 
   private playerStore = usePlayerStore()
   private runtimeStatus = useRuntimeStatusStore()
+  private isRunning = false
 
   /**
    * 获取已点亮的粉丝勋章，并按是否正在直播分组
@@ -362,10 +365,20 @@ class WatchTask extends MedalModule {
    * 每次只观看一轮（通常为 15 分钟），随后读取服务端任务进度；下一轮开始前
    * 再次校验主播仍在直播，避免主播下播后继续长时间发送无效心跳。
    */
+  private executeWatchTask(
+    medal: LiveData.FansMedalPanel.List,
+    skipPreVerify?: boolean,
+  ): Promise<AfterExecutionAction>
+  private executeWatchTask(
+    medal: LiveData.FansMedalPanel.List,
+    skipPreVerify: boolean,
+    singleRound: true,
+  ): Promise<AfterExecutionAction | 'yield'>
   private async executeWatchTask(
     medal: LiveData.FansMedalPanel.List,
     skipPreVerify = false,
-  ): Promise<AfterExecutionAction> {
+    singleRound = false,
+  ): Promise<AfterExecutionAction | 'yield'> {
     if (MedalModule.shouldStopForCrossDay()) {
       this.logger.log('即将或刚刚发生跨天，提早结束本轮观看直播任务')
       return 'stopAndMarkUncompleted'
@@ -383,7 +396,7 @@ class WatchTask extends MedalModule {
         `粉丝勋章【${medal_name}】 无法获取主播【${nick_name}】（UID：${uid}，直播间：${roomid}）的粉丝团升级任务信息，跳过观看直播任务`,
       )
       this.runtimeStatus.setItemStatus('watch', medal, 'failed', '无法获取观看任务信息')
-      return 'skipSleep'
+      return 'markUncompleted'
     }
 
     if (medalData.reach_free_intimacy_limit) {
@@ -405,7 +418,7 @@ class WatchTask extends MedalModule {
         `粉丝勋章【${medal_name}】 无法在主播【${nick_name}】（UID：${uid}，直播间：${roomid}）的粉丝团升级任务信息中找到观看直播任务，跳过观看直播任务`,
       )
       this.runtimeStatus.setItemStatus('watch', medal, 'failed', '没有找到观看直播任务信息')
-      return 'skipSleep'
+      return 'markUncompleted'
     }
 
     if (item.is_done) {
@@ -419,7 +432,7 @@ class WatchTask extends MedalModule {
         `粉丝勋章【${medal_name}】 无法解析主播【${nick_name}】（UID：${uid}，直播间：${roomid}）的观看直播任务的每日上限信息，跳过观看直播任务`,
       )
       this.runtimeStatus.setItemStatus('watch', medal, 'failed', '无法解析观看任务进度')
-      return 'skipSleep'
+      return 'markUncompleted'
     }
 
     const minutes = MedalModule.parseTitleCount(item.title) ?? 15
@@ -579,6 +592,16 @@ class WatchTask extends MedalModule {
         return 'markUncompleted'
       }
 
+      if (singleRound) {
+        this.runtimeStatus.setItemStatus(
+          'watch',
+          medal,
+          'pending',
+          `本轮已确认（${item.sub_title}），按本周收益重新选择主播`,
+        )
+        return 'yield'
+      }
+
       this.logger.log(`粉丝勋章【${medal_name}】 本轮观看已由B站确认，当前进度：${item.sub_title}`)
       this.runtimeStatus.setCurrent(
         'watch',
@@ -615,7 +638,67 @@ class WatchTask extends MedalModule {
     return { markUncompleted, requeueRoomids }
   }
 
+  /** 将已开播与等待开播的主播放进同一个队列，每轮重新比较收益。 */
+  private async executeWeeklyWatchTasks(
+    readyMedals: LiveData.FansMedalPanel.List[],
+    waitingMedals: LiveData.FansMedalPanel.List[],
+  ): Promise<boolean> {
+    const medals = [...readyMedals, ...waitingMedals]
+    if (this.config.isWhiteList) this.sortMedals(medals)
+    const weeklyStore = useWeeklyMedalStore()
+    // 启动时补齐今天已完成的任务，避免把尚未查询的主播误当成本周零收益。
+    for (const medal of medals) {
+      if (MedalModule.shouldStopForCrossDay()) return false
+      await this.fetchMedalData(medal.medal.target_id)
+    }
+    return runWeeklyWatchQueue(medals, {
+      now: tsm,
+      score: (medal) => {
+        const totals = weeklyStore.totals(medal.medal.target_id)
+        return { points: totals.points, rounds: totals.likeRounds + totals.watchRounds }
+      },
+      shouldStop: MedalModule.shouldStopForCrossDay,
+      sleep,
+      pollInterval: MedalModule.WAIT_POLL_INTERVAL,
+      waitUntilLiving: () => this.config.waitUntilLiving,
+      onWaiting: (count) =>
+        this.runtimeStatus.setTaskPhase(
+          'watch',
+          'waiting',
+          `还有 ${count} 位主播等待开播，将优先观看本周收益较少的主播`,
+        ),
+      execute: async (medal) => {
+        const verdict = await this.preExecuteVerify(medal.room_info.room_id, (s) => s === 1, true)
+        if (verdict !== 'pass') {
+          this.runtimeStatus.setItemStatus(
+            'watch',
+            medal,
+            this.config.waitUntilLiving ? 'waiting' : 'skipped',
+            verdict === 'error' ? '开播状态查询失败，稍后重试' : '主播未开播',
+          )
+          return verdict === 'error' && !this.config.waitUntilLiving ? 'error' : 'offline'
+        }
+        const action = await this.executeWatchTask(medal, true, true)
+        if (action === 'yield') return 'yield'
+        if (action === 'requeue') return 'offline'
+        if (action === 'stop' || action === 'stopAndMarkUncompleted') return 'stop'
+        if (action === 'markUncompleted') return 'error'
+        return 'done'
+      },
+    })
+  }
+
   public async run(): Promise<void> {
+    if (this.isRunning) return
+    this.isRunning = true
+    try {
+      await this.runTasks()
+    } finally {
+      this.isRunning = false
+    }
+  }
+
+  private async runTasks(): Promise<void> {
     this.logger.log('观看直播模块开始运行')
 
     await this.playerStore.waitForLiveStatus(0, {
@@ -644,41 +727,45 @@ class WatchTask extends MedalModule {
 
       const { readyMedals, waitingMedals } = this.getMedals()
       this.runtimeStatus.beginTask('watch', readyMedals, waitingMedals)
-      let pendingRoomids = waitingMedals.map((medal) => medal.room_info.room_id)
       let allCompleted = true
 
-      const { stop, markUncompleted, requeueRoomids } = await this.executeWatchTasks(readyMedals)
-      if (markUncompleted) allCompleted = false
-      if (requeueRoomids) pendingRoomids.push(...requeueRoomids)
+      if (this.config.prioritizeWeeklyIntimacy) {
+        allCompleted = await this.executeWeeklyWatchTasks(readyMedals, waitingMedals)
+      } else {
+        let pendingRoomids = waitingMedals.map((medal) => medal.room_info.room_id)
+        const { stop, markUncompleted, requeueRoomids } = await this.executeWatchTasks(readyMedals)
+        if (markUncompleted) allCompleted = false
+        if (requeueRoomids) pendingRoomids.push(...requeueRoomids)
 
-      if (!stop && this.config.waitUntilLiving) {
-        while (pendingRoomids.length > 0) {
-          this.runtimeStatus.setTaskPhase(
-            'watch',
-            'waiting',
-            `还有 ${pendingRoomids.length} 位主播未开播，正在等待观看`,
-          )
-          const result = await this.runWaitingRound(
-            pendingRoomids,
-            (liveStatus) => liveStatus === 1,
-            (medal) => this.executeWatchTask(medal, true),
-          )
-
-          if (result.markUncompleted) allCompleted = false
-          if (result.stop) break
-
-          pendingRoomids = result.requeueRoomids!
-          if (pendingRoomids.length > 0) {
-            const medalMap = useBiliStore().filteredFansMedalsMap
-            const pendingRoomsInfo: Record<number, string | undefined> = {}
-            for (const roomid of pendingRoomids) {
-              pendingRoomsInfo[roomid] = medalMap.get(roomid)?.anchor_info.nick_name
-            }
-            this.logger.log(
-              `仍有 ${pendingRoomids.length} 个直播间未开播，${MedalModule.WAIT_POLL_INTERVAL / 1000} 秒后继续检查`,
-              { pendingRoomsInfo },
+        if (!stop && this.config.waitUntilLiving) {
+          while (pendingRoomids.length > 0) {
+            this.runtimeStatus.setTaskPhase(
+              'watch',
+              'waiting',
+              `还有 ${pendingRoomids.length} 位主播未开播，正在等待观看`,
             )
-            await sleep(MedalModule.WAIT_POLL_INTERVAL)
+            const result = await this.runWaitingRound(
+              pendingRoomids,
+              (liveStatus) => liveStatus === 1,
+              (medal) => this.executeWatchTask(medal, true),
+            )
+
+            if (result.markUncompleted) allCompleted = false
+            if (result.stop) break
+
+            pendingRoomids = result.requeueRoomids!
+            if (pendingRoomids.length > 0) {
+              const medalMap = useBiliStore().filteredFansMedalsMap
+              const pendingRoomsInfo: Record<number, string | undefined> = {}
+              for (const roomid of pendingRoomids) {
+                pendingRoomsInfo[roomid] = medalMap.get(roomid)?.anchor_info.nick_name
+              }
+              this.logger.log(
+                `仍有 ${pendingRoomids.length} 个直播间未开播，${MedalModule.WAIT_POLL_INTERVAL / 1000} 秒后继续检查`,
+                { pendingRoomsInfo },
+              )
+              await sleep(MedalModule.WAIT_POLL_INTERVAL)
+            }
           }
         }
       }

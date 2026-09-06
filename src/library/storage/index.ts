@@ -2,8 +2,17 @@ import { GM_getValue, GM_setValue } from '$'
 import defaultValues from './defaultValues'
 import type { UiConfig, ModuleConfig, Cache } from '@/types'
 import _ from 'lodash'
+import type { WeeklyMedalRecords } from '../weekly-medal-stats'
 
 class Storage {
+  public static getWeeklyMedalStats(): WeeklyMedalRecords {
+    return GM_getValue('weeklyMedalStats', {})
+  }
+
+  public static setWeeklyMedalStats(records: WeeklyMedalRecords): void {
+    GM_setValue('weeklyMedalStats', records)
+  }
+
   /**
    * 递归合并配置项。删除当前配置中不存在于默认配置的键，补上相对于默认配置缺少的键值，其它键值不变
    *

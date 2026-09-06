@@ -60,6 +60,7 @@ const defaultValues: DefaultValues = {
           },
           watch: {
             enabled: false,
+            prioritizeWeeklyIntimacy: true,
             useTargetRounds: false,
             targetRounds: 1,
             waitUntilLiving: true,

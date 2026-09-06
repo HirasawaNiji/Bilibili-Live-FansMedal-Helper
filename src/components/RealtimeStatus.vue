@@ -193,8 +193,8 @@ const formatTime = (timestamp: number) =>
 }
 
 .instance-warning :deep(.el-alert__title) {
-  color: var(--el-color-danger);
   font-weight: 600;
+  color: var(--el-color-danger);
 }
 
 .task-header {
