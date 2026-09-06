@@ -1,9 +1,10 @@
 {
   "name": "bilibili-live-tasks-helper",
   "private": true,
-  "version": "7.4.0",
+  "version": "7.5.0",
   "type": "module",
   "scripts": {
+    "test": "node --test scripts/*.test.mjs",
     "dev": "vite",
     "build": "run-p type-check \"build-minify {@}\" --",
     "build-minify": "run-s \"build-only {@}\" minify --",

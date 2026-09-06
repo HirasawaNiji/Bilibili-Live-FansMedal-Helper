@@ -6,12 +6,14 @@ import EnhanceExperience from './EnhanceExperience.vue'
 import RemoveElement from './RemoveElement.vue'
 import ScriptSettings from './ScriptSettings.vue'
 import RealtimeStatus from './RealtimeStatus.vue'
+import WeeklySummary from './WeeklyMedalStats.vue'
 import { defineComponent } from 'vue'
 
 // 注册对当前组件实例可用的组件
 export default defineComponent({
   components: {
     RealtimeStatus,
+    WeeklySummary,
     MainSiteTasks,
     LiveTasks,
     OtherTasks,

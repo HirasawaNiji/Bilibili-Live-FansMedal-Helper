@@ -1,6 +1,7 @@
 import BAPI from '@/library/bili-api'
 import { sleep } from '@/library/utils'
 import { useBiliStore, useCacheStore } from '@/stores'
+import { useWeeklyMedalStore } from '@/stores/useWeeklyMedalStore'
 
 export interface FreeIntimacyRefreshResult {
   reminderCount: number
@@ -45,8 +46,10 @@ export function refreshFreeIntimacyReminders(): Promise<FreeIntimacyRefreshResul
     for (let i = 0; i < medals.length; i++) {
       const medal = medals[i]
       try {
+        const requestStartedAt = Date.now()
         const response = await BAPI.live.getActivatedMedalInfo(medal.medal.target_id)
         if (response.code === 0) {
+          useWeeklyMedalStore().observe(medal, response.data, requestStartedAt)
           let liveStatus: number | null = medal.room_info.living_status
 
           // 只为进入提醒名单的主播额外查询实时开播状态，减少无用请求。

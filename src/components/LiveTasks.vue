@@ -269,6 +269,12 @@ function handleRowClick(row: MedalInfoRow) {
       </el-text>
     </el-card>
 
+    <el-row>
+      <el-button text type="primary" @click="uiStore.setActiveMenuIndex('WeeklySummary')">
+        查看每周小结与观看优先级
+      </el-button>
+    </el-row>
+
     <!-- 点亮熄灭勋章 -->
     <el-row>
       <el-space wrap :size="[8, 0]">
@@ -351,6 +357,19 @@ function handleRowClick(row: MedalInfoRow) {
     <el-divider />
 
     <!-- 观看直播 -->
+    <el-row>
+      <el-switch
+        v-model="config.medalTasks.watch.prioritizeWeeklyIntimacy"
+        active-text="优先观看本周任务亲密度较少的主播"
+      />
+    </el-row>
+    <el-row>
+      <el-text type="info" size="small">
+        默认开启。每完成一轮重新排序，等待中的主播开播后也参与选择；收益相同时参考已完成轮数并轮流执行。
+        奖励未知的轮次仅参与轮数比较。保留黑白名单和每日目标限制，关闭后恢复按原名单顺序观看。
+        调整后刷新页面生效。
+      </el-text>
+    </el-row>
     <el-row>
       <el-space wrap :size="[8, 0]">
         <el-switch v-model="config.medalTasks.watch.enabled" active-text="观看直播" />
@@ -511,8 +530,8 @@ function handleRowClick(row: MedalInfoRow) {
 }
 
 .script-instance-warning :deep(.el-alert__title) {
-  color: var(--el-color-danger);
   font-weight: 600;
+  color: var(--el-color-danger);
 }
 
 .intimacy-reminder-card {

@@ -16,6 +16,7 @@ import type { LiveData } from '@/library/bili-api/data'
 import BAPI from '@/library/bili-api'
 import { isNowAfter, isNowBefore, isTimestampToday, tsm } from '@/library/luxon'
 import _ from 'lodash'
+import { useWeeklyMedalStore } from '@/stores/useWeeklyMedalStore'
 
 class MedalModule extends BaseModule {
   /** 粉丝团升级任务 jump_type 对应的中文文案 */
@@ -549,6 +550,7 @@ class MedalModule extends BaseModule {
   protected fetchMedalData(target_id: number): Promise<LiveData.GetActivatedMedalInfo.Data | null> {
     return MedalModule.enqueueTaskInfoRequest(async () => {
       try {
+        const requestStartedAt = tsm()
         const response = await BAPI.live.getActivatedMedalInfo(target_id)
         this.logger.log(`BAPI.live.getActivatedMedalInfo(${target_id}) response`, response)
         if (response.code === 0) {
@@ -556,6 +558,7 @@ class MedalModule extends BaseModule {
             (item) => item.medal.target_id === target_id,
           )
           if (medal) {
+            useWeeklyMedalStore().observe(medal, response.data, requestStartedAt)
             useCacheStore().updateFreeIntimacyReminder(medal, response.data)
           }
           return response.data

@@ -40,6 +40,7 @@ interface ModuleConfig {
         }
         watch: {
           enabled: boolean
+          prioritizeWeeklyIntimacy: boolean
           useTargetRounds: boolean
           targetRounds: number
           waitUntilLiving: boolean
@@ -119,6 +120,7 @@ interface ModuleConfig {
 
 type MenuIndex =
   | 'RealtimeStatus'
+  | 'WeeklySummary'
   | 'MainSiteTasks'
   | 'LiveTasks'
   | 'OtherTasks'
