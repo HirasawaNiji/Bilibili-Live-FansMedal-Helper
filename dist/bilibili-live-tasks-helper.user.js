@@ -3,7 +3,7 @@
 // @name:en         Bilibili Live FansMedal Helper
 // @name:zh         哔哩哔哩直播粉丝牌助手
 // @namespace       https://github.com/HirasawaNiji/Bilibili-Live-FansMedal-Helper
-// @version         7.5.0
+// @version         7.5.1
 // @author          andywang425 (original), HirasawaNiji (modified edition)
 // @description     A community-maintained BLTH fork focused on Bilibili live fans medal tasks.
 // @description:en  A community-maintained BLTH fork focused on Bilibili live fans medal tasks.
@@ -95,7 +95,7 @@
 			else (document.head || document.documentElement).appendChild(document.createElement("style")).append(c);
 		})(t);
 	};
-	_css(" #aside-el-menu[data-v-f3c852ac]:not(.el-menu--collapse){width:150px}.title[data-v-848fd8cc]{align-items:baseline;padding-left:20px;display:flex}.header-big-text[data-v-848fd8cc]{align-self:unset;font-size:var(--big-text-size)}.header-small-text[data-v-848fd8cc]{align-self:unset;font-size:var(--small-text-size);--small-text-size:18px;margin-left:10px}.collapse-btn[data-v-848fd8cc]{float:left;cursor:pointer;justify-content:center;align-items:center;height:100%;display:flex}.script-instance-warning[data-v-54ad9ff4]{margin-bottom:16px}.script-instance-warning[data-v-54ad9ff4] .el-alert__title{color:var(--el-color-danger);font-weight:600}.intimacy-reminder-card[data-v-54ad9ff4]{border-color:var(--el-color-warning-light-5);margin-bottom:16px}.intimacy-reminder-header[data-v-54ad9ff4]{justify-content:space-between;align-items:center;gap:12px;display:flex}.avatar-wrap[data-v-54ad9ff4]{width:80px;height:80px}.avatar[data-v-54ad9ff4]{border-radius:50%;justify-content:center;align-items:center;display:flex}.round-input[data-v-54ad9ff4]{width:60px}.label-text[data-v-0ed6e292]{color:var(--el-text-color-primary);line-height:32px}.instance-warning[data-v-df937d5c],.task-card[data-v-df937d5c]{margin-bottom:16px}.instance-warning[data-v-df937d5c] .el-alert__title{color:var(--el-color-danger);font-weight:600}.task-header[data-v-df937d5c]{flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;display:flex}.task-title[data-v-df937d5c]{font-weight:600}.current-task[data-v-df937d5c],.status-table[data-v-df937d5c]{margin-top:12px}.event-card[data-v-df937d5c] .el-timeline{padding-left:8px}.weekly-card[data-v-bdf15583]{margin-bottom:16px}.weekly-header[data-v-bdf15583]{flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;display:flex}.week-select[data-v-bdf15583]{width:210px}.summary-message[data-v-bdf15583],.summary-totals[data-v-bdf15583],.summary-search[data-v-bdf15583]{margin-bottom:12px}.summary-description[data-v-bdf15583],.priority-preview[data-v-bdf15583]{margin:12px 0;line-height:1.6}.base[data-v-28de2807]{z-index:1003;background-color:var(--el-bg-color);position:absolute}.header[data-v-28de2807]{box-sizing:border-box;width:100%;height:60px;font-size:var(--big-text-size);--big-text-size:25px;border-bottom:1px solid #e3e5e7;align-items:center;display:flex;position:relative}.aside[data-v-28de2807]{width:auto}.main[data-v-28de2807]{padding:0}.panel-main[data-v-28de2807]{padding:calc(var(--el-main-padding) * .625) var(--el-main-padding)}.fade-enter-active[data-v-28de2807]{animation:.2s linear fade-in}.info-icon[data-v-ac1f18ab]{font-size:var(--el-font-size-base);cursor:pointer}.status-icon[data-v-807a5498]{font-size:var(--el-font-size-base)}.done[data-v-807a5498]{color:#1ab059}.waiting[data-v-807a5498]{color:#e6a23c}.done.is-hovered[data-v-807a5498]{color:#409eff;cursor:pointer}.error[data-v-807a5498]{color:#ff6464}.icon-fade-enter-active[data-v-807a5498],.icon-fade-leave-active[data-v-807a5498]{transition:all .15s}.icon-fade-enter-from[data-v-807a5498],.icon-fade-leave-to[data-v-807a5498]{opacity:0;transform:scale(.8)rotate(90deg)}\n/*$vite$:1*/ ");
+	_css(" #aside-el-menu[data-v-f3c852ac]:not(.el-menu--collapse){width:150px}.title[data-v-848fd8cc]{align-items:baseline;padding-left:20px;display:flex}.header-big-text[data-v-848fd8cc]{align-self:unset;font-size:var(--big-text-size)}.header-small-text[data-v-848fd8cc]{align-self:unset;font-size:var(--small-text-size);--small-text-size:18px;margin-left:10px}.collapse-btn[data-v-848fd8cc]{float:left;cursor:pointer;justify-content:center;align-items:center;height:100%;display:flex}.script-instance-warning[data-v-54ad9ff4]{margin-bottom:16px}.script-instance-warning[data-v-54ad9ff4] .el-alert__title{color:var(--el-color-danger);font-weight:600}.intimacy-reminder-card[data-v-54ad9ff4]{border-color:var(--el-color-warning-light-5);margin-bottom:16px}.intimacy-reminder-header[data-v-54ad9ff4]{justify-content:space-between;align-items:center;gap:12px;display:flex}.avatar-wrap[data-v-54ad9ff4]{width:80px;height:80px}.avatar[data-v-54ad9ff4]{border-radius:50%;justify-content:center;align-items:center;display:flex}.round-input[data-v-54ad9ff4]{width:60px}.label-text[data-v-0ed6e292]{color:var(--el-text-color-primary);line-height:32px}.instance-warning[data-v-df937d5c],.task-card[data-v-df937d5c]{margin-bottom:16px}.instance-warning[data-v-df937d5c] .el-alert__title{color:var(--el-color-danger);font-weight:600}.task-header[data-v-df937d5c]{flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;display:flex}.task-title[data-v-df937d5c]{font-weight:600}.current-task[data-v-df937d5c],.status-table[data-v-df937d5c]{margin-top:12px}.event-card[data-v-df937d5c] .el-timeline{padding-left:8px}.weekly-card[data-v-bdf15583]{margin-bottom:16px}.weekly-header[data-v-bdf15583]{flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;display:flex}.week-select[data-v-bdf15583]{width:210px}.summary-message[data-v-bdf15583],.summary-totals[data-v-bdf15583],.summary-search[data-v-bdf15583]{margin-bottom:12px}.summary-description[data-v-bdf15583],.priority-preview[data-v-bdf15583]{margin:12px 0;line-height:1.6}.base[data-v-2cbb557a]{z-index:1003;background-color:var(--el-bg-color);position:absolute}.header[data-v-2cbb557a]{box-sizing:border-box;width:100%;height:60px;font-size:var(--big-text-size);--big-text-size:25px;border-bottom:1px solid #e3e5e7;align-items:center;display:flex;position:relative}.aside[data-v-2cbb557a]{width:auto}.main[data-v-2cbb557a]{padding:0}.panel-main[data-v-2cbb557a]{padding:calc(var(--el-main-padding) * .625) var(--el-main-padding)}.fade-enter-active[data-v-2cbb557a]{animation:.2s linear fade-in}.info-icon[data-v-ac1f18ab]{font-size:var(--el-font-size-base);cursor:pointer}.status-icon[data-v-807a5498]{font-size:var(--el-font-size-base)}.done[data-v-807a5498]{color:#1ab059}.waiting[data-v-807a5498]{color:#e6a23c}.done.is-hovered[data-v-807a5498]{color:#409eff;cursor:pointer}.error[data-v-807a5498]{color:#ff6464}.icon-fade-enter-active[data-v-807a5498],.icon-fade-leave-active[data-v-807a5498]{transition:all .15s}.icon-fade-enter-from[data-v-807a5498],.icon-fade-leave-to[data-v-807a5498]{opacity:0;transform:scale(.8)rotate(90deg)}\n/*$vite$:1*/ ");
 	var __defProp = Object.defineProperty;
 	var __exportAll = (all, no_symbols) => {
 		let target = {};
@@ -993,11 +993,11 @@
 					if (response.code === 0) fansMedalList.push(...response.data.list);
 					else {
 						this.logger.error(`获取粉丝勋章列表第${page}页失败，提前结束获取`, response.message);
-						return fansMedalList;
+						return lodash.default.uniqBy(fansMedalList, (item) => item.medal.medal_id);
 					}
 					await sleep(lodash.default.random(300, 500));
 				}
-				return fansMedalList;
+				return lodash.default.uniqBy(fansMedalList, (item) => item.medal.medal_id);
 			} catch (error) {
 				useBiliStore().fansMedalsMeta.status = "error";
 				throw new ModuleError(this.moduleName, `获取粉丝勋章列表出错: ${error.message}`);
@@ -1543,9 +1543,9 @@
 						canTryNextPage: currentPage < totalPage && !hasUnlightedMedal
 					};
 				}
-				this.logger.warn(`BAPI.live.fansMedalPanel(${page}) 失败`, response.message);
+				this.logger.warn(`fansMedalPanel(${page}) 获取直播状态失败`, response.message);
 			} catch (error) {
-				this.logger.warn(`BAPI.live.fansMedalPanel(${page}) 出错`, error);
+				this.logger.warn(`fansMedalPanel(${page}) 获取直播状态出错`, error);
 			}
 			return {
 				status: null,
@@ -1582,9 +1582,9 @@
 						});
 						return liveStatus;
 					}
-					this.logger.warn(`BAPI.live.getInfoByRoom(${roomid}) 失败`, response.message);
+					this.logger.warn(`getInfoByRoom(${roomid}) 获取直播状态失败`, response.message);
 				} catch (error) {
-					this.logger.warn(`BAPI.live.getInfoByRoom(${roomid}) 出错`, error);
+					this.logger.warn(`getInfoByRoom(${roomid}) 获取直播状态出错`, error);
 				}
 				return null;
 			},
@@ -1600,9 +1600,9 @@
 						});
 						return liveStatus;
 					}
-					this.logger.warn(`BAPI.live.getRoomPlayInfo(${roomid}) 失败`, response.message);
+					this.logger.warn(`getRoomPlayInfo(${roomid}) 获取直播状态失败`, response.message);
 				} catch (error) {
-					this.logger.warn(`BAPI.live.getRoomPlayInfo(${roomid}) 出错`, error);
+					this.logger.warn(`getRoomPlayInfo(${roomid}) 获取直播状态出错`, error);
 				}
 				return null;
 			}
@@ -1785,11 +1785,11 @@
 						}
 						return response.data;
 					} else {
-						this.logger.error(`BAPI.live.getActivatedMedalInfo(${target_id}) 失败`, response.message);
+						this.logger.error(`获取粉丝勋章信息失败（主播uid：${target_id}）`, response.message);
 						return null;
 					}
 				} catch (error) {
-					this.logger.error(`BAPI.live.getActivatedMedalInfo(${target_id}) 出错`, error);
+					this.logger.error(`获取粉丝勋章信息出错（主播uid：${target_id}）`, error);
 					return null;
 				}
 			});
@@ -1797,7 +1797,7 @@
 		logFreeIntimacyFromData(medal, data) {
 			if (data.free_intimacy > 0) {
 				const reachLimitText = data.reach_free_intimacy_limit ? "（已达到储蓄亲密度上限）" : "";
-				this.logger.log(`粉丝勋章【${medal.medal.medal_name}】储蓄了 ${data.free_intimacy} 亲密度${reachLimitText}，投喂一个粉丝灯牌即可领取这些亲密度`);
+				this.logger.warn(`粉丝勋章【${medal.medal.medal_name}】储蓄了 ${data.free_intimacy} 亲密度${reachLimitText}，投喂一个粉丝灯牌即可领取这些亲密度`);
 			}
 		}
 		async confirmTaskCompletedAfterUpdate(medal, jump_type, requiredRounds) {
@@ -2283,13 +2283,9 @@
 					this.setHeartbeatState(response.data);
 					await this.waitForNextHeartbeat();
 					return this.X();
-				} else {
-					this.logger.error(`BAPI.liveTrace.E(${this.id}, ${this.device}, ${this.ruid}) 失败`, response.message);
-					this.logger.error(`直播间 ${this.roomID} 的 E 心跳失败，无法继续执行观看直播任务，跳过该房间`);
-				}
+				} else this.logger.error(`直播间 ${this.roomID} 的 E 心跳失败，无法继续执行观看直播任务，跳过该房间`, response.message);
 			} catch (error) {
-				this.logger.error(`BAPI.liveTrace.E(${this.id}, ${this.device}, ${this.ruid}) 出错`, error);
-				this.logger.error(`直播间 ${this.roomID} 的 E 心跳失败，无法继续执行观看直播任务，跳过该房间`);
+				this.logger.error(`直播间 ${this.roomID} 的 E 心跳出错，无法继续执行观看直播任务，跳过该房间`, error);
 			}
 		}
 		async X() {
@@ -2319,13 +2315,11 @@
 						this.setHeartbeatState(response.data);
 						await this.waitForNextHeartbeat();
 					} else {
-						this.logger.error(`BAPI.liveTrace.X(${s}, ${this.id}, ${this.device}, ${this.ruid}, ${this.timestamp}, ${this.secretKey}, ${this.heartBeatInterval}) 失败`, response.message);
-						this.logger.error(`直播间 ${this.roomID} 的 X 心跳失败，无法继续执行观看直播任务，跳过该房间（目前已观看 ${this.watchedSeconds} 秒）`);
+						this.logger.error(`直播间 ${this.roomID} 的 X 心跳失败，无法继续执行观看直播任务，跳过该房间（目前已观看 ${this.watchedSeconds} 秒）`, response.message);
 						return;
 					}
 				} catch (error) {
-					this.logger.error(`BAPI.liveTrace.X(s, ${this.id}, ${this.device}, ${this.ruid}, ${this.timestamp}, ${this.secretKey}, ${this.heartBeatInterval}) 出错`, error);
-					this.logger.error(`直播间 ${this.roomID} 的 X 心跳失败，无法继续执行观看直播任务，跳过该房间（目前已观看 ${this.watchedSeconds} 秒）`);
+					this.logger.error(`直播间 ${this.roomID} 的 X 心跳出错，无法继续执行观看直播任务，跳过该房间（目前已观看 ${this.watchedSeconds} 秒）`, error);
 					return;
 				}
 			}
@@ -3786,7 +3780,7 @@
 	};
 	var NoSleep = class extends BaseModule {
 		static runOnMultiplePages = true;
-		static runAt = "window-load";
+		static runAt = "document-start";
 		static onFrame = "top";
 		static runAfterDefault = false;
 		config = useModuleStore().moduleConfig.EnhanceExperience.noSleep;
@@ -3798,10 +3792,11 @@
 			try {
 				Object.defineProperties(document, {
 					visibilityState: { value: "visible" },
-					hidden: { value: false }
+					hidden: { value: false },
+					hasFocus: { value: () => true }
 				});
 			} catch (e) {
-				this.logger.warn("修改页面可见性相关属性失败，可能已被其它脚本锁定", e);
+				this.logger.warn("修改页面可见性和焦点状态相关属性失败，可能已被其它脚本锁定", e);
 			}
 		}
 	};
@@ -6495,7 +6490,12 @@
 			const logger = new Logger("App.vue");
 			const isShowPanel = uiStore.uiConfig.isShowPanel;
 			uiStore.uiConfig.isShowPanel = false;
-			let button;
+			let button = null;
+			let buttonAnchor = null;
+			function updateButtonPosition() {
+				if (!button) return;
+				button.style.left = `${buttonAnchor ? buttonAnchor.offsetLeft + buttonAnchor.offsetWidth + 15 : 15}px`;
+			}
 			function updatePosition() {
 				const rect = livePlayer.getBoundingClientRect();
 				uiStore.livePlayerRect.top = rect.top;
@@ -6504,16 +6504,18 @@
 				uiStore.livePlayerRect.width = rect.width;
 				uiStore.windowScrollPosition.x = _unsafeWindow.scrollX;
 				uiStore.windowScrollPosition.y = _unsafeWindow.scrollY;
+				updateButtonPosition();
 			}
 			function buttonOnClick() {
 				uiStore.changeShowPanel();
-				button.innerText = uiStore.isShowPanelButtonText;
+				if (button) button.innerText = uiStore.isShowPanelButtonText;
 			}
 			const throttleButtonOnClick = lodash.default.throttle(buttonOnClick, 300);
 			const livePlayer = dq(".player-section");
 			if (livePlayer) {
 				updatePosition();
 				waitForElement(dq("#player-ctnr"), ".header-info-ctnr .normal-row-ctnr", 1e4).then((normalRowCtnr) => {
+					buttonAnchor = normalRowCtnr.firstElementChild instanceof HTMLElement ? normalRowCtnr.firstElementChild : null;
 					button = dce("button");
 					button.setAttribute("class", "blth-btn");
 					button.onclick = throttleButtonOnClick;
@@ -6524,6 +6526,8 @@
 						logger.warn(".normal-row-ctnr 没有子节点", normalRowCtnr);
 						normalRowCtnr.appendChild(button);
 					}
+					updateButtonPosition();
+					if (buttonAnchor) new ResizeObserver(() => updateButtonPosition()).observe(buttonAnchor);
 					if (!isSelfTopFrame()) (0, hotkeys_js.default)("alt+b", { element: topFrameDocumentElement() }, throttleButtonOnClick);
 					(0, hotkeys_js.default)("alt+b", throttleButtonOnClick);
 				}).catch((e) => logger.error(e));
@@ -6573,7 +6577,7 @@
 				});
 			};
 		}
-	}), [["__scopeId", "data-v-28de2807"]]);
+	}), [["__scopeId", "data-v-2cbb557a"]]);
 	var cssLoader = (name) => _GM_addStyle(_GM_getResourceText(name));
 	cssLoader("element-plus/dist/index.css");
 	_css("/*! Modified from element-plus/theme-chalk/dark/css-vars.css */\nhtml[lab-style*=dark]{--lightningcss-light: ;--lightningcss-dark:initial;color-scheme:dark;--lightningcss-light: ;--lightningcss-dark:initial;--el-color-primary:#409eff;--el-color-primary-light-3:#3375b9;--el-color-primary-light-5:#2a598a;--el-color-primary-light-7:#213d5b;--el-color-primary-light-8:#1d3043;--el-color-primary-light-9:#18222b;--el-color-primary-dark-2:#66b1ff;--el-color-success:#67c23a;--el-color-success-light-3:#4e8e2f;--el-color-success-light-5:#3e6b27;--el-color-success-light-7:#2d481f;--el-color-success-light-8:#25371c;--el-color-success-light-9:#1c2518;--el-color-success-dark-2:#85ce61;--el-color-warning:#e6a23c;--el-color-warning-light-3:#a77730;--el-color-warning-light-5:#7d5b28;--el-color-warning-light-7:#533f20;--el-color-warning-light-8:#3e301c;--el-color-warning-light-9:#292218;--el-color-warning-dark-2:#ebb563;--el-color-danger:#f56c6c;--el-color-danger-light-3:#b25252;--el-color-danger-light-5:#854040;--el-color-danger-light-7:#582e2e;--el-color-danger-light-8:#412626;--el-color-danger-light-9:#2a1d1d;--el-color-danger-dark-2:#f78989;--el-color-error:#f56c6c;--el-color-error-light-3:#b25252;--el-color-error-light-5:#854040;--el-color-error-light-7:#582e2e;--el-color-error-light-8:#412626;--el-color-error-light-9:#2a1d1d;--el-color-error-dark-2:#f78989;--el-color-info:#909399;--el-color-info-light-3:#6b6d71;--el-color-info-light-5:#525457;--el-color-info-light-7:#393a3c;--el-color-info-light-8:#2d2d2f;--el-color-info-light-9:#202121;--el-color-info-dark-2:#a6a9ad;--el-box-shadow:0px 12px 32px 4px #0000005c, 0px 8px 20px #000000b8;--el-box-shadow-light:0px 0px 12px #000000b8;--el-box-shadow-lighter:0px 0px 6px #000000b8;--el-box-shadow-dark:0px 16px 48px 16px #000000b8, 0px 12px 32px #000, 0px 8px 16px -8px #000;--el-bg-color-page:#0a0a0a;--el-bg-color:#141414;--el-bg-color-overlay:#1d1e1f;--el-text-color-primary:#e5eaf3;--el-text-color-regular:#cfd3dc;--el-text-color-secondary:#a3a6ad;--el-text-color-placeholder:#8d9095;--el-text-color-disabled:#6c6e72;--el-border-color-darker:#636466;--el-border-color-dark:#58585b;--el-border-color:#4c4d4f;--el-border-color-light:#414243;--el-border-color-lighter:#363637;--el-border-color-extra-light:#2b2b2c;--el-fill-color-darker:#424243;--el-fill-color-dark:#39393a;--el-fill-color:#303030;--el-fill-color-light:#262727;--el-fill-color-lighter:#1d1d1d;--el-fill-color-extra-light:#191919;--el-fill-color-blank:#141414;--el-mask-color:#000c;--el-mask-color-extra-light:#0000004d}html[lab-style*=dark] .el-button{--el-button-disabled-text-color:#ffffff80}html[lab-style*=dark] .el-card{--el-card-bg-color:var(--el-bg-color-overlay);--el-fill-color-blank:var(--el-card-bg-color)}html[lab-style*=dark] .el-empty{--el-empty-fill-color-0:var(--el-color-black);--el-empty-fill-color-1:#4b4b52;--el-empty-fill-color-2:#36383d;--el-empty-fill-color-3:#1e1e20;--el-empty-fill-color-4:#262629;--el-empty-fill-color-5:#202124;--el-empty-fill-color-6:#212224;--el-empty-fill-color-7:#1b1c1f;--el-empty-fill-color-8:#1c1d1f;--el-empty-fill-color-9:#18181a}");
@@ -6682,7 +6686,7 @@
 		TaskStatus: () => TaskStatusIcon_default,
 		Tasks: () => TasksIcon_default
 	});
-	_css(".blth-btn{color:#fff;cursor:pointer;background-color:#23ade5;border:none;border-radius:4px;margin-left:15px;padding:5px;font-size:small;line-height:10px;box-shadow:0 0 2px #00000075}.blth-btn:hover{background-color:#1097cc}.blth-btn:hover:active{background-color:#0e86b6;position:relative;top:1px}.el-message-box ul,ol{padding-left:1em!important}.el-message-box ul{list-style:initial!important}.el-message-box ol{list-style:decimal!important}@media screen and (width>=1930px){html[lab-style*=adaptive] .base{zoom:calc(15 / 16)}}@media screen and (width>=2058px){html[lab-style*=adaptive] .base{zoom:calc(3 / 4)}}@media screen and (width>=2570px){html[lab-style*=adaptive] .base{zoom:calc(2 / 3)}}@media screen and (width>=3210px){html[lab-style*=adaptive] .base{zoom:calc(1 / 2)}}@media screen and (width>=3850px){html[lab-style*=adaptive] .base{zoom:calc(15 / 32)}}");
+	_css(".blth-btn{z-index:1003;color:#fff;cursor:pointer;background-color:#23ade5;border:none;border-radius:4px;padding:5px;font-size:small;line-height:10px;position:absolute;top:50%;transform:translateY(-50%);box-shadow:0 0 2px #00000075}.blth-btn:hover{background-color:#1097cc}.blth-btn:hover:active{background-color:#0e86b6;transform:translateY(calc(1px - 50%))}.el-message-box ul,ol{padding-left:1em!important}.el-message-box ul{list-style:initial!important}.el-message-box ol{list-style:decimal!important}@media screen and (width>=1930px){html[lab-style*=adaptive] .base{zoom:calc(15 / 16)}}@media screen and (width>=2058px){html[lab-style*=adaptive] .base{zoom:calc(3 / 4)}}@media screen and (width>=2570px){html[lab-style*=adaptive] .base{zoom:calc(2 / 3)}}@media screen and (width>=3210px){html[lab-style*=adaptive] .base{zoom:calc(1 / 2)}}@media screen and (width>=3850px){html[lab-style*=adaptive] .base{zoom:calc(15 / 32)}}");
 	var logger = new Logger("Main");
 	logger.log("document.readyState", document.readyState);
 	var pinia$1 = (0, pinia.createPinia)();

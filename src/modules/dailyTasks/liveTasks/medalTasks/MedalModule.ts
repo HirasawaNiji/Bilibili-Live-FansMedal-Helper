@@ -103,9 +103,9 @@ class MedalModule extends BaseModule {
           canTryNextPage: currentPage < totalPage && !hasUnlightedMedal,
         }
       }
-      this.logger.warn(`BAPI.live.fansMedalPanel(${page}) 失败`, response.message)
+      this.logger.warn(`fansMedalPanel(${page}) 获取直播状态失败`, response.message)
     } catch (error) {
-      this.logger.warn(`BAPI.live.fansMedalPanel(${page}) 出错`, error)
+      this.logger.warn(`fansMedalPanel(${page}) 获取直播状态出错`, error)
     }
     return { status: null, canTryNextPage: false }
   }
@@ -153,9 +153,9 @@ class MedalModule extends BaseModule {
           MedalModule.liveStatusSnapshots.set(roomid, { liveStatus, observedAt: tsm() })
           return liveStatus
         }
-        this.logger.warn(`BAPI.live.getInfoByRoom(${roomid}) 失败`, response.message)
+        this.logger.warn(`getInfoByRoom(${roomid}) 获取直播状态失败`, response.message)
       } catch (error) {
-        this.logger.warn(`BAPI.live.getInfoByRoom(${roomid}) 出错`, error)
+        this.logger.warn(`getInfoByRoom(${roomid}) 获取直播状态出错`, error)
       }
 
       return null
@@ -169,9 +169,9 @@ class MedalModule extends BaseModule {
           MedalModule.liveStatusSnapshots.set(roomid, { liveStatus, observedAt: tsm() })
           return liveStatus
         }
-        this.logger.warn(`BAPI.live.getRoomPlayInfo(${roomid}) 失败`, response.message)
+        this.logger.warn(`getRoomPlayInfo(${roomid}) 获取直播状态失败`, response.message)
       } catch (error) {
-        this.logger.warn(`BAPI.live.getRoomPlayInfo(${roomid}) 出错`, error)
+        this.logger.warn(`getRoomPlayInfo(${roomid}) 获取直播状态出错`, error)
       }
 
       return null
@@ -563,11 +563,11 @@ class MedalModule extends BaseModule {
           }
           return response.data
         } else {
-          this.logger.error(`BAPI.live.getActivatedMedalInfo(${target_id}) 失败`, response.message)
+          this.logger.error(`获取粉丝勋章信息失败（主播uid：${target_id}）`, response.message)
           return null
         }
       } catch (error) {
-        this.logger.error(`BAPI.live.getActivatedMedalInfo(${target_id}) 出错`, error)
+        this.logger.error(`获取粉丝勋章信息出错（主播uid：${target_id}）`, error)
         return null
       }
     })
@@ -582,7 +582,7 @@ class MedalModule extends BaseModule {
   ): void {
     if (data.free_intimacy > 0) {
       const reachLimitText = data.reach_free_intimacy_limit ? '（已达到储蓄亲密度上限）' : ''
-      this.logger.log(
+      this.logger.warn(
         `粉丝勋章【${medal.medal.medal_name}】储蓄了 ${data.free_intimacy} 亲密度${reachLimitText}，投喂一个粉丝灯牌即可领取这些亲密度`,
       )
     }

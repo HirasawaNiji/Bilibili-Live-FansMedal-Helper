@@ -39,12 +39,13 @@ class FansMedals extends BaseModule {
         } else {
           this.logger.error(`获取粉丝勋章列表第${page}页失败，提前结束获取`, response.message)
           // 中途出错，返回已获取的粉丝勋章列表，不抛出错误
-          return fansMedalList
+          return _.uniqBy(fansMedalList, (item) => item.medal.medal_id)
         }
         // 防止风控，稍微加点延时
         await sleep(_.random(300, 500))
       }
-      return fansMedalList
+      // 上游 BLTH 7.3.6：同一勋章可能同时出现在特殊列表及普通列表，或相邻分页。
+      return _.uniqBy(fansMedalList, (item) => item.medal.medal_id)
     } catch (error: any) {
       useBiliStore().fansMedalsMeta.status = 'error'
       throw new ModuleError(this.moduleName, `获取粉丝勋章列表出错: ${error.message}`)

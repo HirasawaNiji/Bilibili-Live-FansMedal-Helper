@@ -19,7 +19,13 @@ const isShowPanel = uiStore.uiConfig.isShowPanel
 // 太早显示会导致几个字悬浮在屏幕左上角的问题
 uiStore.uiConfig.isShowPanel = false
 // 显示/隐藏控制面板按钮
-let button: HTMLButtonElement
+let button: HTMLButtonElement | null = null
+let buttonAnchor: HTMLElement | null = null
+/** 根据主播信息区域的位置定位按钮，避免挤占原生活动组件空间。 */
+function updateButtonPosition() {
+  if (!button) return
+  button.style.left = `${buttonAnchor ? buttonAnchor.offsetLeft + buttonAnchor.offsetWidth + 15 : 15}px`
+}
 /**
  * 更新播放器的大小、位置和滚动条位置
  */
@@ -33,13 +39,14 @@ function updatePosition() {
   // 窗口滚动条位置需和播放器的大小、位置同步更新
   uiStore.windowScrollPosition.x = unsafeWindow.scrollX
   uiStore.windowScrollPosition.y = unsafeWindow.scrollY
+  updateButtonPosition()
 }
 /**
  * 显示/隐藏控制面板按钮被点击
  */
 function buttonOnClick() {
   uiStore.changeShowPanel()
-  button.innerText = uiStore.isShowPanelButtonText
+  if (button) button.innerText = uiStore.isShowPanelButtonText
 }
 // 节流，防止点击过快，减小渲染压力
 const throttleButtonOnClick = _.throttle(buttonOnClick, 300)
@@ -50,6 +57,11 @@ if (livePlayer) {
   // 节点 #player-ctnr 在初始 html 中出现
   waitForElement(dq('#player-ctnr')!, '.header-info-ctnr .normal-row-ctnr', 10e3)
     .then((normalRowCtnr) => {
+      // 插入按钮前确定锚点，空容器时不能把按钮自身当作锚点。
+      buttonAnchor =
+        normalRowCtnr.firstElementChild instanceof HTMLElement
+          ? normalRowCtnr.firstElementChild
+          : null
       // 创建显示/隐藏控制面板按钮
       button = dce('button')
       button.setAttribute('class', 'blth-btn')
@@ -62,6 +74,11 @@ if (livePlayer) {
       } else {
         logger.warn('.normal-row-ctnr 没有子节点', normalRowCtnr)
         normalRowCtnr.appendChild(button)
+      }
+      updateButtonPosition()
+      if (buttonAnchor) {
+        const buttonAnchorObserver = new ResizeObserver(() => updateButtonPosition())
+        buttonAnchorObserver.observe(buttonAnchor)
       }
       if (!isSelfTopFrame()) {
         // 在特殊直播间，脚本所在的目标 frame 只占屏幕中间一块地方
