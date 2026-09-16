@@ -1,6 +1,63 @@
 import { GM_xmlhttpRequest, type GmXmlhttpRequestOption, type GmResponseType } from '$'
 import _ from 'lodash'
 import { addURLParams } from '../utils'
+import { isScriptStopping, registerRequestCancellation } from '../script-lifecycle'
+
+function requestError(kind: string, response?: { status: number }): Error {
+  // 不输出完整 URL，避免把 csrf、设备标识和签名带入导出日志。
+  return new Error(`${kind}${response ? ` (HTTP status: ${response.status})` : ''}`)
+}
+
+function sendTrackedRequest(
+  details: GmXmlhttpRequestOption<GmResponseType, any>,
+  reject: (error: Error) => void,
+): void {
+  if (isScriptStopping()) {
+    reject(requestError('脚本正在退出，请求已取消'))
+    return
+  }
+  let finished = false
+  let handle: { abort: () => void } | undefined
+  let unregister = () => {}
+  const cancel = () => {
+    if (finished) return
+    finished = true
+    unregister()
+    reject(requestError('脚本正在退出，请求已取消'))
+    try {
+      handle?.abort()
+    } catch {
+      /* 页面退出时可能已由管理器取消。 */
+    }
+  }
+  unregister = registerRequestCancellation(cancel)
+  const finish = () => {
+    if (finished) return false
+    finished = true
+    unregister()
+    return true
+  }
+  const { onload, onerror, ontimeout, onabort } = details
+  details.onload = function (response) {
+    if (finish()) onload?.call(this, response)
+  }
+  details.onerror = function (response) {
+    if (finish()) onerror?.call(this, response)
+  }
+  details.ontimeout = () => {
+    if (finish()) ontimeout?.()
+  }
+  details.onabort = () => {
+    if (finish()) onabort?.()
+  }
+  try {
+    handle = GM_xmlhttpRequest(details)
+  } catch (error) {
+    finished = true
+    unregister()
+    reject(error instanceof Error ? error : requestError('无法发送请求'))
+  }
+}
 
 class Request {
   /** 请求 URL 的前缀 */
@@ -45,12 +102,14 @@ class Request {
           resolve(response.response)
         },
         onerror: function (err) {
-          reject(new Error(JSON.stringify(err)))
+          reject(requestError('网络请求失败', err))
         },
+        ontimeout: () => reject(requestError('网络请求超时')),
+        onabort: () => reject(requestError('网络请求已取消')),
       }
 
       const details = _.defaultsDeep(otherDetails, defaultDetails)
-      GM_xmlhttpRequest(details)
+      sendTrackedRequest(details, reject)
     })
   }
 
@@ -104,12 +163,14 @@ class Request {
           resolve(response.response)
         },
         onerror: function (err) {
-          reject(new Error(JSON.stringify(err)))
+          reject(requestError('网络请求失败', err))
         },
+        ontimeout: () => reject(requestError('网络请求超时')),
+        onabort: () => reject(requestError('网络请求已取消')),
       }
 
       const details = _.defaultsDeep(otherDetails, defaultDetails)
-      GM_xmlhttpRequest(details)
+      sendTrackedRequest(details, reject)
     })
   }
 }

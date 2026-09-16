@@ -1,6 +1,12 @@
 import { delayToNextMoment, isNowAfter, isNowBefore, isTimestampToday, tsm } from '@/library/luxon'
 import BAPI from '@/library/bili-api'
-import { useBiliStore, useModuleStore, usePlayerStore, useRuntimeStatusStore } from '@/stores'
+import {
+  useBiliStore,
+  useCacheStore,
+  useModuleStore,
+  usePlayerStore,
+  useRuntimeStatusStore,
+} from '@/stores'
 import Logger from '@/library/logger'
 import CryptoJS from 'crypto-js'
 import { sleep } from '@/library/utils'
@@ -10,6 +16,15 @@ import type { LiveData } from '@/library/bili-api/data'
 import type { AfterExecutionAction, BatchExecutionResult, GroupedMedals } from './types'
 import { useWeeklyMedalStore } from '@/stores/useWeeklyMedalStore'
 import { runWeeklyWatchQueue } from '@/library/weekly-watch-scheduler'
+import Storage from '@/library/storage'
+import { isScriptStopping } from '@/library/script-lifecycle'
+import { isWatchRecoveryExhausted, recordWatchFailure } from '@/library/watch-recovery'
+
+interface HeartbeatResult {
+  watchedSeconds: number
+  completed: boolean
+  reason: 'completed' | 'request-error' | 'server-error' | 'missing-buvid' | 'stopped'
+}
 
 interface SpyderData {
   benchmark: string
@@ -21,7 +36,7 @@ interface SpyderData {
   ua: string
 }
 
-class RoomHeart {
+export class RoomHeart {
   constructor(
     roomID: number,
     areaID: number,
@@ -40,6 +55,7 @@ class RoomHeart {
 
   /** 已观看时间（秒） */
   private watchedSeconds: number = 0
+  private reason: HeartbeatResult['reason'] = 'stopped'
 
   /** 目标观看时间（秒） */
   private readonly targetSeconds: number
@@ -80,15 +96,20 @@ class RoomHeart {
   /**
    * 开始心跳
    *
-   * @returns 是否成功观看过任意时长
+   * @returns 实际成功心跳时长、是否完成目标以及结束原因
    */
-  public async start(): Promise<boolean> {
+  public async start(): Promise<HeartbeatResult> {
     if (!this.buvid) {
       this.logger.error(`缺少buvid，无法为直播间 ${this.roomID} 执行观看直播任务，请尝试刷新页面`)
-      return false
+      this.reason = 'missing-buvid'
+    } else if (!isScriptStopping()) {
+      await this.E()
     }
-    await this.E()
-    return this.watchedSeconds > 0
+    return {
+      watchedSeconds: this.watchedSeconds,
+      completed: this.watchedSeconds >= this.targetSeconds,
+      reason: this.reason,
+    }
   }
 
   private setHeartbeatState(data: {
@@ -116,6 +137,7 @@ class RoomHeart {
    */
   private async waitForNextHeartbeat(): Promise<void> {
     while (true) {
+      if (isScriptStopping()) return
       const remaining = this.nextHeartbeatAt - tsm()
 
       if (remaining <= 0) {
@@ -137,6 +159,7 @@ class RoomHeart {
   private async E(): Promise<void> {
     try {
       const response = await BAPI.liveTrace.E(this.id, this.device, this.ruid)
+      if (isScriptStopping()) return
       this.logger.log(
         `BAPI.liveTrace.E(${this.id}, ${this.device}, ${this.ruid}) response`,
         response,
@@ -147,12 +170,14 @@ class RoomHeart {
         await this.waitForNextHeartbeat()
         return this.X()
       } else {
+        this.reason = 'server-error'
         this.logger.error(
           `直播间 ${this.roomID} 的 E 心跳失败，无法继续执行观看直播任务，跳过该房间`,
           response.message,
         )
       }
     } catch (error) {
+      this.reason = isScriptStopping() ? 'stopped' : 'request-error'
       this.logger.error(
         `直播间 ${this.roomID} 的 E 心跳出错，无法继续执行观看直播任务，跳过该房间`,
         error,
@@ -165,6 +190,7 @@ class RoomHeart {
    */
   private async X(): Promise<void> {
     while (true) {
+      if (isScriptStopping()) return
       if (isNowAfter(23, 58) || isNowBefore(0, 5)) {
         this.logger.log(`即将或刚刚发生跨天，停止直播间 ${this.roomID} 的X心跳`)
         return
@@ -193,6 +219,7 @@ class RoomHeart {
           this.heartBeatInterval,
           spyderData.ts,
         )
+        if (isScriptStopping()) return
         this.logger.log(
           `BAPI.liveTrace.X(${s}, ${this.id}, ${this.device}, ${this.ruid}, ${this.timestamp}, ${this.secretKey}, ${this.heartBeatInterval}, ${spyderData.ts}) response`,
           response,
@@ -204,6 +231,7 @@ class RoomHeart {
             `直播间 ${this.roomID} 的第 ${this.seq - 1} 次 X 心跳成功，已观看 ${this.watchedSeconds} 秒`,
           )
           if (this.watchedSeconds >= this.targetSeconds) {
+            this.reason = 'completed'
             // 达到目标观看时间，结束
             return
           }
@@ -211,6 +239,7 @@ class RoomHeart {
           await this.waitForNextHeartbeat()
           // 继续下一轮 X 心跳
         } else {
+          this.reason = 'server-error'
           this.logger.error(
             `直播间 ${this.roomID} 的 X 心跳失败，无法继续执行观看直播任务，跳过该房间（目前已观看 ${this.watchedSeconds} 秒）`,
             response.message,
@@ -218,6 +247,7 @@ class RoomHeart {
           return
         }
       } catch (error) {
+        this.reason = isScriptStopping() ? 'stopped' : 'request-error'
         this.logger.error(
           `直播间 ${this.roomID} 的 X 心跳出错，无法继续执行观看直播任务，跳过该房间（目前已观看 ${this.watchedSeconds} 秒）`,
           error,
@@ -372,7 +402,7 @@ class WatchTask extends MedalModule {
     skipPreVerify = false,
     singleRound = false,
   ): Promise<AfterExecutionAction | 'yield'> {
-    if (MedalModule.shouldStopForCrossDay()) {
+    if (isScriptStopping() || MedalModule.shouldStopForCrossDay()) {
       this.logger.log('即将或刚刚发生跨天，提早结束本轮观看直播任务')
       return 'stopAndMarkUncompleted'
     }
@@ -443,6 +473,22 @@ class WatchTask extends MedalModule {
       return 'skipSleep'
     }
 
+    const ownerUid = useBiliStore().BilibiliLive?.UID
+    if (!ownerUid) {
+      this.runtimeStatus.setItemStatus('watch', medal, 'failed', '无法确认当前账号，停止自动恢复')
+      return 'markUncompleted'
+    }
+    const recovery = Storage.getWatchRecovery(ownerUid)
+    if (isWatchRecoveryExhausted(recovery, roomid, parsed.current)) {
+      this.runtimeStatus.setItemStatus(
+        'watch',
+        medal,
+        'failed',
+        `补救次数已用尽，B站进度仍为 ${item.sub_title}`,
+      )
+      return 'markUncompleted'
+    }
+
     if (!skipPreVerify) {
       const verdict = await this.preExecuteVerify(roomid, (liveStatus) => liveStatus === 1)
 
@@ -482,13 +528,13 @@ class WatchTask extends MedalModule {
     }
 
     while (parsed.current < target) {
-      if (MedalModule.shouldStopForCrossDay()) {
+      if (isScriptStopping() || MedalModule.shouldStopForCrossDay()) {
         this.logger.log('即将或刚刚发生跨天，提早结束本轮观看直播任务')
         return 'stopAndMarkUncompleted'
       }
 
       // 除从等待队列刚刚确认开播后的第一轮外，每轮开始前都重新确认直播状态。
-      if (!skipPreVerify || parsed.current > 0) {
+      if (!skipPreVerify || parsed.current > 0 || recovery.rooms[roomid]) {
         const verdict = await this.preExecuteVerify(roomid, (liveStatus) => liveStatus === 1)
         if (verdict !== 'pass') {
           this.logger.log(
@@ -516,7 +562,7 @@ class WatchTask extends MedalModule {
         target,
       )
 
-      const hasWatchingProgress = await new RoomHeart(
+      const heartbeat = await new RoomHeart(
         roomid,
         area_id,
         parent_area_id,
@@ -524,23 +570,42 @@ class WatchTask extends MedalModule {
         minutes * 60,
       ).start()
 
-      if (!hasWatchingProgress) {
-        this.runtimeStatus.setItemStatus('watch', medal, 'failed', '观看心跳执行失败')
+      if (isScriptStopping() || MedalModule.shouldStopForCrossDay()) {
+        return 'stopAndMarkUncompleted'
+      }
+      if (heartbeat.reason === 'missing-buvid') {
+        this.runtimeStatus.setItemStatus('watch', medal, 'failed', '缺少 buvid，无法建立观看心跳')
         return 'markUncompleted'
       }
 
-      await sleep(MedalModule.WAIT_MEDAL_UPDATE_DELAY)
-      medalData = await this.fetchMedalData(uid)
-      if (!medalData) {
-        this.logger.error(
-          `粉丝勋章【${medal_name}】 完成一轮观看后无法获取最新任务进度，停止该房间，避免继续无效观看`,
+      this.logger.log(
+        `粉丝勋章【${medal_name}】 本轮心跳成功累计 ${heartbeat.watchedSeconds}/${minutes * 60} 秒，结束原因：${heartbeat.reason}；正在确认B站进度`,
+      )
+      // 给服务端结算时间；查询失败不等于进度未增长，最后一次仍无有效响应则停止。
+      for (const waitMs of [MedalModule.WAIT_MEDAL_UPDATE_DELAY, 12_000, 15_000]) {
+        await sleep(waitMs)
+        if (isScriptStopping() || MedalModule.shouldStopForCrossDay())
+          return 'stopAndMarkUncompleted'
+        medalData = await this.fetchMedalData(uid)
+        item = medalData ? MedalModule.findTaskInfo(medalData.task_info, 'watchLive') : undefined
+        parsed = item ? MedalModule.parseDailyLimit(item.sub_title) : null
+        if (
+          medalData?.reach_free_intimacy_limit ||
+          item?.is_done ||
+          (parsed && parsed.current > previousProgress)
         )
-        this.runtimeStatus.setItemStatus('watch', medal, 'failed', '完成一轮后无法获取最新任务进度')
-        return 'markUncompleted'
+          break
       }
-
-      item = MedalModule.findTaskInfo(medalData.task_info, 'watchLive')
-      parsed = item ? MedalModule.parseDailyLimit(item.sub_title) : null
+      if (isScriptStopping() || MedalModule.shouldStopForCrossDay()) return 'stopAndMarkUncompleted'
+      if (medalData?.reach_free_intimacy_limit) {
+        this.runtimeStatus.setItemStatus(
+          'watch',
+          medal,
+          'skipped',
+          '储蓄亲密度已达上限，停止补看和刷新',
+        )
+        return 'skipSleep'
+      }
       if (!item || !parsed) {
         this.logger.error(
           `粉丝勋章【${medal_name}】 完成一轮观看后无法解析最新任务进度，停止该房间，避免继续无效观看`,
@@ -560,30 +625,85 @@ class WatchTask extends MedalModule {
         return null
       }
 
-      if (parsed.current <= previousProgress) {
+      if (parsed.current < previousProgress) {
+        this.runtimeStatus.setItemStatus(
+          'watch',
+          medal,
+          'failed',
+          'B站进度出现回退，停止自动补救，等待重新查询',
+        )
+        return 'markUncompleted'
+      }
+      if (parsed.current === previousProgress) {
         const verdict = await this.preExecuteVerify(roomid, (liveStatus) => liveStatus === 1)
-        if (verdict !== 'pass' && this.config.waitUntilLiving) {
-          this.logger.log(`粉丝勋章【${medal_name}】 本轮观看未计入且主播已经下播，回到等待队列`)
+        if (verdict !== 'pass') {
+          const reason = verdict === 'fail' ? '主播已下播' : '无法确认开播状态'
+          this.logger.log(`粉丝勋章【${medal_name}】 ${reason}，不执行补看或刷新`)
           this.runtimeStatus.setItemStatus(
             'watch',
             medal,
-            'waiting',
-            '本轮未计入且主播已下播，等待重新开播',
+            this.config.waitUntilLiving ? 'waiting' : 'failed',
+            `${reason}，观看未完成`,
           )
-          return 'requeue'
+          return this.config.waitUntilLiving ? 'requeue' : 'markUncompleted'
         }
-
+        if (isScriptStopping() || MedalModule.shouldStopForCrossDay())
+          return 'stopAndMarkUncompleted'
+        const action = recordWatchFailure(recovery, roomid, previousProgress)
+        Storage.setWatchRecovery(ownerUid, recovery)
+        if (action === 'retry') {
+          this.logger.warn(
+            `粉丝勋章【${medal_name}】 心跳成功累计 ${heartbeat.watchedSeconds}/${minutes * 60} 秒，B站进度仍为 ${item.sub_title}；15 秒后重新建立会话，补看一轮`,
+          )
+          this.runtimeStatus.setItemStatus(
+            'watch',
+            medal,
+            'running',
+            `进度未增长，准备补看一轮（${item.sub_title}）`,
+          )
+          await sleep(15_000)
+          skipPreVerify = false
+          continue
+        }
+        if (action === 'reload') {
+          const cacheStore = useCacheStore()
+          if (
+            cacheStore.hasDocumentLock &&
+            window.self === window.top &&
+            cacheStore.currentScriptType === 'Main'
+          ) {
+            // 必须先同步保存预算和配置，再停止请求并刷新。失败也不退还预算，避免刷新循环。
+            recovery.reloadUsed = true
+            Storage.setWatchRecovery(ownerUid, recovery)
+            Storage.setModuleConfig(useModuleStore().moduleConfig)
+            this.runtimeStatus.setItemStatus(
+              'watch',
+              medal,
+              'waiting',
+              '补看后仍无增长，正在安全刷新；今天最多一次',
+            )
+            this.logger.warn(
+              `粉丝勋章【${medal_name}】 补看后B站进度仍为 ${item.sub_title}；保存恢复记录并刷新当前页面，等待旧文档退出后再接管`,
+            )
+            if (cacheStore.reloadForWatchRecovery()) return 'stopAndMarkUncompleted'
+          }
+        }
+        recovery.rooms[roomid] = { progress: previousProgress, failures: 3 }
+        Storage.setWatchRecovery(ownerUid, recovery)
         this.logger.warn(
-          `粉丝勋章【${medal_name}】 已发送 ${minutes} 分钟观看心跳，但B站任务进度仍为 ${item.sub_title}；停止该房间，避免继续无效观看`,
+          `粉丝勋章【${medal_name}】 B站进度仍为 ${item.sub_title}；补救已用尽或无法安全刷新，停止该房间`,
         )
         this.runtimeStatus.setItemStatus(
           'watch',
           medal,
           'failed',
-          `已观看 ${minutes} 分钟，但B站进度未增长（${item.sub_title}）`,
+          `本轮心跳 ${heartbeat.watchedSeconds}/${minutes * 60} 秒；补救已停止（${item.sub_title}）`,
         )
         return 'markUncompleted'
       }
+
+      delete recovery.rooms[roomid]
+      Storage.setWatchRecovery(ownerUid, recovery)
 
       if (singleRound) {
         this.runtimeStatus.setItemStatus(
@@ -682,7 +802,7 @@ class WatchTask extends MedalModule {
   }
 
   public async run(): Promise<void> {
-    if (this.isRunning) return
+    if (this.isRunning || isScriptStopping()) return
     this.isRunning = true
     try {
       await this.runTasks()
@@ -763,6 +883,7 @@ class WatchTask extends MedalModule {
         }
       }
 
+      if (isScriptStopping()) return
       if (allCompleted) {
         this.config._lastCompleteTime = tsm()
         this.logger.log('观看直播任务已完成')

@@ -3,7 +3,7 @@
 // @name:en         Bilibili Live FansMedal Helper
 // @name:zh         哔哩哔哩直播粉丝牌助手
 // @namespace       https://github.com/HirasawaNiji/Bilibili-Live-FansMedal-Helper
-// @version         7.5.1
+// @version         7.5.2
 // @author          andywang425 (original), HirasawaNiji (modified edition)
 // @description     A community-maintained BLTH fork focused on Bilibili live fans medal tasks.
 // @description:en  A community-maintained BLTH fork focused on Bilibili live fans medal tasks.
@@ -438,7 +438,40 @@
 			freeIntimacyReminders: {}
 		}
 	};
+	function recoveryDay(now = Date.now()) {
+		return new Date(now + 480 * 60 * 1e3).toISOString().slice(0, 10);
+	}
+	function getRecoveryRecord(record, now = Date.now()) {
+		const day = recoveryDay(now);
+		return record?.day === day ? record : {
+			day,
+			reloadUsed: false,
+			rooms: {}
+		};
+	}
+	function recordWatchFailure(record, roomId, progress) {
+		const previous = record.rooms[roomId];
+		const failures = previous?.progress === progress ? previous.failures + 1 : 1;
+		record.rooms[roomId] = {
+			progress,
+			failures
+		};
+		if (failures === 1) return "retry";
+		if (failures === 2 && !record.reloadUsed) return "reload";
+		return "stop";
+	}
+	function isWatchRecoveryExhausted(record, roomId, progress) {
+		const previous = record.rooms[roomId];
+		return previous?.progress === progress && previous.failures >= 3;
+	}
+	var WATCH_RELOAD_MARKER = "BLTH:watch-recovery-reload:v1";
 	var Storage = class {
+		static getWatchRecovery(ownerUid) {
+			return getRecoveryRecord(_GM_getValue(`watchRecovery:${ownerUid}`));
+		}
+		static setWatchRecovery(ownerUid, record) {
+			_GM_setValue(`watchRecovery:${ownerUid}`, record);
+		}
 		static getWeeklyMedalStats() {
 			return _GM_getValue("weeklyMedalStats", {});
 		}
@@ -472,6 +505,44 @@
 			return this.mergeConfigs(_GM_getValue("cache", {}), defaultValues.cache);
 		}
 	};
+	var stopping = false;
+	var pending = new Set();
+	function isScriptStopping() {
+		return stopping;
+	}
+	function registerRequestCancellation(cancel) {
+		if (stopping) {
+			cancel();
+			return () => {};
+		}
+		pending.add(cancel);
+		return () => pending.delete(cancel);
+	}
+	function stopScriptRequests() {
+		stopping = true;
+		for (const cancel of [...pending]) cancel();
+		pending.clear();
+	}
+	function acquireDocumentLock(locks, waitForPrevious = false) {
+		return new Promise((resolve) => {
+			const controller = new AbortController();
+			const timer = waitForPrevious ? setTimeout(() => controller.abort(), 2e4) : void 0;
+			const options = waitForPrevious ? { signal: controller.signal } : { ifAvailable: true };
+			const unavailable = () => {
+				clearTimeout(timer);
+				resolve(false);
+			};
+			try {
+				locks.request("BLTH:main-document:v1", options, async (lock) => {
+					clearTimeout(timer);
+					resolve(Boolean(lock));
+					if (lock) await new Promise(() => {});
+				}).catch(unavailable);
+			} catch {
+				unavailable();
+			}
+		});
+	}
 	var useCacheStore = (0, pinia.defineStore)("cache", () => {
 		const FREE_INTIMACY_REMINDER_THRESHOLD = 90;
 		const cache = (0, vue.ref)(Storage.getCache());
@@ -510,6 +581,7 @@
 			});
 		}
 		const currentScriptType = (0, vue.ref)("Main");
+		const hasDocumentLock = (0, vue.ref)(false);
 		function startMainBLTHAliveHeartBeat() {
 			const heartBeatTimer = setInterval(() => {
 				cache.value.lastAliveHeartBeatTime = tsm();
@@ -521,7 +593,39 @@
 				Storage.setCache(rawCache);
 			});
 		}
-		function checkCurrentScriptType() {
+		async function checkCurrentScriptType() {
+			const top = _unsafeWindow.top;
+			if (navigator.locks) {
+				if (window.self !== window.top) {
+					await top.__BLTH_MAIN_READY__;
+					hasDocumentLock.value = Boolean(top.__BLTH_MAIN_FLAG__);
+					currentScriptType.value = hasDocumentLock.value ? "SubMain" : "Other";
+					return;
+				}
+				if (top.__BLTH_MAIN_READY__) {
+					currentScriptType.value = "Other";
+					return;
+				}
+				let recovering = false;
+				try {
+					const marker = Number(sessionStorage.getItem(WATCH_RELOAD_MARKER));
+					recovering = marker > 0 && Date.now() - marker < 12e4;
+					sessionStorage.removeItem(WATCH_RELOAD_MARKER);
+				} catch {}
+				const ready = acquireDocumentLock(navigator.locks, recovering).then((acquired) => {
+					hasDocumentLock.value = acquired;
+					currentScriptType.value = acquired ? "Main" : "Other";
+					if (acquired) {
+						top.__BLTH_MAIN_FLAG__ = "🚩";
+						cache.value.lastAliveHeartBeatTime = tsm();
+						Storage.setCache((0, vue.toRaw)(cache.value));
+					}
+					return acquired;
+				});
+				top.__BLTH_MAIN_READY__ = ready;
+				await ready;
+				return;
+			}
 			if (cache.value.lastAliveHeartBeatTime !== 0 && tsm() - cache.value.lastAliveHeartBeatTime < 8e3) currentScriptType.value = _unsafeWindow.top.__BLTH_MAIN_FLAG__ ? "SubMain" : "Other";
 			else {
 				const rawCache = (0, vue.toRaw)(cache.value);
@@ -531,6 +635,21 @@
 				currentScriptType.value = "Main";
 			}
 		}
+		function reloadForWatchRecovery() {
+			if (!hasDocumentLock.value || window.self !== window.top || currentScriptType.value !== "Main") return false;
+			try {
+				sessionStorage.setItem(WATCH_RELOAD_MARKER, String(Date.now()));
+			} catch {
+				return false;
+			}
+			stopScriptRequests();
+			try {
+				window.location.reload();
+			} catch {
+				return false;
+			}
+			return true;
+		}
 		(0, vue.watch)(cache, (newCache) => Storage.setCache(newCache), { deep: true });
 		return {
 			cache,
@@ -538,10 +657,60 @@
 			updateFreeIntimacyReminder,
 			pruneFreeIntimacyReminders,
 			currentScriptType,
+			hasDocumentLock,
+			reloadForWatchRecovery,
 			startMainBLTHAliveHeartBeat,
 			checkCurrentScriptType
 		};
 	});
+	function requestError(kind, response) {
+		return new Error(`${kind}${response ? ` (HTTP status: ${response.status})` : ""}`);
+	}
+	function sendTrackedRequest(details, reject) {
+		if (isScriptStopping()) {
+			reject(requestError("脚本正在退出，请求已取消"));
+			return;
+		}
+		let finished = false;
+		let handle;
+		let unregister = () => {};
+		const cancel = () => {
+			if (finished) return;
+			finished = true;
+			unregister();
+			reject(requestError("脚本正在退出，请求已取消"));
+			try {
+				handle?.abort();
+			} catch {}
+		};
+		unregister = registerRequestCancellation(cancel);
+		const finish = () => {
+			if (finished) return false;
+			finished = true;
+			unregister();
+			return true;
+		};
+		const { onload, onerror, ontimeout, onabort } = details;
+		details.onload = function(response) {
+			if (finish()) onload?.call(this, response);
+		};
+		details.onerror = function(response) {
+			if (finish()) onerror?.call(this, response);
+		};
+		details.ontimeout = () => {
+			if (finish()) ontimeout?.();
+		};
+		details.onabort = () => {
+			if (finish()) onabort?.();
+		};
+		try {
+			handle = _GM_xmlhttpRequest(details);
+		} catch (error) {
+			finished = true;
+			unregister();
+			reject(error instanceof Error ? error : requestError("无法发送请求"));
+		}
+	}
 	var Request$1 = class {
 		url_prefix;
 		origin;
@@ -566,10 +735,12 @@
 						resolve(response.response);
 					},
 					onerror: function(err) {
-						reject(new Error(JSON.stringify(err)));
-					}
+						reject(requestError("网络请求失败", err));
+					},
+					ontimeout: () => reject(requestError("网络请求超时")),
+					onabort: () => reject(requestError("网络请求已取消"))
 				};
-				_GM_xmlhttpRequest(lodash.default.defaultsDeep(otherDetails, defaultDetails));
+				sendTrackedRequest(lodash.default.defaultsDeep(otherDetails, defaultDetails), reject);
 			});
 		}
 		post(url, data, otherDetails) {
@@ -596,10 +767,12 @@
 						resolve(response.response);
 					},
 					onerror: function(err) {
-						reject(new Error(JSON.stringify(err)));
-					}
+						reject(requestError("网络请求失败", err));
+					},
+					ontimeout: () => reject(requestError("网络请求超时")),
+					onabort: () => reject(requestError("网络请求已取消"))
 				};
-				_GM_xmlhttpRequest(lodash.default.defaultsDeep(otherDetails, defaultDetails));
+				sendTrackedRequest(lodash.default.defaultsDeep(otherDetails, defaultDetails), reject);
 			});
 		}
 	};
@@ -623,7 +796,7 @@
 					csrf: bili_jct,
 					target_id,
 					web_location
-				});
+				}, { timeout: 3e4 });
 			},
 			likeReport: (room_id, anchor_id, click_time = 1, web_location = "444.8") => {
 				const biliStore = useBiliStore();
@@ -683,34 +856,40 @@
 		liveTrace: {
 			E: (id, device, ruid, is_patch = 0, heart_beat = [], web_location = "444.8") => {
 				const bili_jct = useBiliStore().cookies.bili_jct;
-				return request.liveTrace.post("/xlive/data-interface/v1/x25Kn/E", null, { params: wbiSign({
-					id: JSON.stringify(id),
-					device: JSON.stringify(device),
-					ruid,
-					ts: tsm(),
-					is_patch,
-					heart_beat: JSON.stringify(heart_beat),
-					ua: navigator.userAgent,
-					web_location,
-					csrf: bili_jct
-				}) });
+				return request.liveTrace.post("/xlive/data-interface/v1/x25Kn/E", null, {
+					timeout: 3e4,
+					params: wbiSign({
+						id: JSON.stringify(id),
+						device: JSON.stringify(device),
+						ruid,
+						ts: tsm(),
+						is_patch,
+						heart_beat: JSON.stringify(heart_beat),
+						ua: navigator.userAgent,
+						web_location,
+						csrf: bili_jct
+					})
+				});
 			},
 			X: (s, id, device, ruid, ets, benchmark, time, ts, trackid = "-99998", web_location = "444.8") => {
 				const bili_jct = useBiliStore().cookies.bili_jct;
-				return request.liveTrace.post("/xlive/data-interface/v1/x25Kn/X", null, { params: wbiSign({
-					s,
-					id: JSON.stringify(id),
-					device: JSON.stringify(device),
-					ruid,
-					ets,
-					benchmark,
-					time,
-					ts,
-					ua: navigator.userAgent,
-					trackid,
-					web_location,
-					csrf: bili_jct
-				}) });
+				return request.liveTrace.post("/xlive/data-interface/v1/x25Kn/X", null, {
+					timeout: 3e4,
+					params: wbiSign({
+						s,
+						id: JSON.stringify(id),
+						device: JSON.stringify(device),
+						ruid,
+						ets,
+						benchmark,
+						time,
+						ts,
+						ua: navigator.userAgent,
+						trackid,
+						web_location,
+						csrf: bili_jct
+					})
+				});
 			}
 		},
 		main: {
@@ -2226,6 +2405,7 @@
 		}
 		logger = new Logger("RoomHeart");
 		watchedSeconds = 0;
+		reason = "stopped";
 		targetSeconds;
 		areaID;
 		parentID;
@@ -2254,10 +2434,13 @@
 		async start() {
 			if (!this.buvid) {
 				this.logger.error(`缺少buvid，无法为直播间 ${this.roomID} 执行观看直播任务，请尝试刷新页面`);
-				return false;
-			}
-			await this.E();
-			return this.watchedSeconds > 0;
+				this.reason = "missing-buvid";
+			} else if (!isScriptStopping()) await this.E();
+			return {
+				watchedSeconds: this.watchedSeconds,
+				completed: this.watchedSeconds >= this.targetSeconds,
+				reason: this.reason
+			};
 		}
 		setHeartbeatState(data) {
 			({heartbeat_interval: this.heartBeatInterval, secret_key: this.secretKey, secret_rule: this.secretRule, timestamp: this.timestamp} = data);
@@ -2265,6 +2448,7 @@
 		}
 		async waitForNextHeartbeat() {
 			while (true) {
+				if (isScriptStopping()) return;
 				const remaining = this.nextHeartbeatAt - tsm();
 				if (remaining <= 0) {
 					const drift = -remaining;
@@ -2277,19 +2461,25 @@
 		async E() {
 			try {
 				const response = await BAPI.liveTrace.E(this.id, this.device, this.ruid);
+				if (isScriptStopping()) return;
 				this.logger.log(`BAPI.liveTrace.E(${this.id}, ${this.device}, ${this.ruid}) response`, response);
 				if (response.code === 0) {
 					this.seq += 1;
 					this.setHeartbeatState(response.data);
 					await this.waitForNextHeartbeat();
 					return this.X();
-				} else this.logger.error(`直播间 ${this.roomID} 的 E 心跳失败，无法继续执行观看直播任务，跳过该房间`, response.message);
+				} else {
+					this.reason = "server-error";
+					this.logger.error(`直播间 ${this.roomID} 的 E 心跳失败，无法继续执行观看直播任务，跳过该房间`, response.message);
+				}
 			} catch (error) {
+				this.reason = isScriptStopping() ? "stopped" : "request-error";
 				this.logger.error(`直播间 ${this.roomID} 的 E 心跳出错，无法继续执行观看直播任务，跳过该房间`, error);
 			}
 		}
 		async X() {
 			while (true) {
+				if (isScriptStopping()) return;
 				if (isNowAfter(23, 58) || isNowBefore(0, 5)) {
 					this.logger.log(`即将或刚刚发生跨天，停止直播间 ${this.roomID} 的X心跳`);
 					return;
@@ -2306,19 +2496,25 @@
 					};
 					const s = this.spyder(JSON.stringify(spyderData), this.secretRule);
 					const response = await BAPI.liveTrace.X(s, this.id, this.device, this.ruid, this.timestamp, this.secretKey, this.heartBeatInterval, spyderData.ts);
+					if (isScriptStopping()) return;
 					this.logger.log(`BAPI.liveTrace.X(${s}, ${this.id}, ${this.device}, ${this.ruid}, ${this.timestamp}, ${this.secretKey}, ${this.heartBeatInterval}, ${spyderData.ts}) response`, response);
 					if (response.code === 0) {
 						this.seq += 1;
 						this.watchedSeconds += this.heartBeatInterval;
 						this.logger.log(`直播间 ${this.roomID} 的第 ${this.seq - 1} 次 X 心跳成功，已观看 ${this.watchedSeconds} 秒`);
-						if (this.watchedSeconds >= this.targetSeconds) return;
+						if (this.watchedSeconds >= this.targetSeconds) {
+							this.reason = "completed";
+							return;
+						}
 						this.setHeartbeatState(response.data);
 						await this.waitForNextHeartbeat();
 					} else {
+						this.reason = "server-error";
 						this.logger.error(`直播间 ${this.roomID} 的 X 心跳失败，无法继续执行观看直播任务，跳过该房间（目前已观看 ${this.watchedSeconds} 秒）`, response.message);
 						return;
 					}
 				} catch (error) {
+					this.reason = isScriptStopping() ? "stopped" : "request-error";
 					this.logger.error(`直播间 ${this.roomID} 的 X 心跳出错，无法继续执行观看直播任务，跳过该房间（目前已观看 ${this.watchedSeconds} 秒）`, error);
 					return;
 				}
@@ -2407,7 +2603,7 @@
 			}
 		}
 		async executeWatchTask(medal, skipPreVerify = false, singleRound = false) {
-			if (MedalModule.shouldStopForCrossDay()) {
+			if (isScriptStopping() || MedalModule.shouldStopForCrossDay()) {
 				this.logger.log("即将或刚刚发生跨天，提早结束本轮观看直播任务");
 				return "stopAndMarkUncompleted";
 			}
@@ -2449,6 +2645,16 @@
 				this.runtimeStatus.setItemStatus("watch", medal, "completed", `观看任务已完成（${item.sub_title}）`);
 				return "skipSleep";
 			}
+			const ownerUid = useBiliStore().BilibiliLive?.UID;
+			if (!ownerUid) {
+				this.runtimeStatus.setItemStatus("watch", medal, "failed", "无法确认当前账号，停止自动恢复");
+				return "markUncompleted";
+			}
+			const recovery = Storage.getWatchRecovery(ownerUid);
+			if (isWatchRecoveryExhausted(recovery, roomid, parsed.current)) {
+				this.runtimeStatus.setItemStatus("watch", medal, "failed", `补救次数已用尽，B站进度仍为 ${item.sub_title}`);
+				return "markUncompleted";
+			}
 			if (!skipPreVerify) {
 				const verdict = await this.preExecuteVerify(roomid, (liveStatus) => liveStatus === 1);
 				if (verdict === "error") {
@@ -2469,11 +2675,11 @@
 				return "markUncompleted";
 			}
 			while (parsed.current < target) {
-				if (MedalModule.shouldStopForCrossDay()) {
+				if (isScriptStopping() || MedalModule.shouldStopForCrossDay()) {
 					this.logger.log("即将或刚刚发生跨天，提早结束本轮观看直播任务");
 					return "stopAndMarkUncompleted";
 				}
-				if (!skipPreVerify || parsed.current > 0) {
+				if (!skipPreVerify || parsed.current > 0 || recovery.rooms[roomid]) {
 					if (await this.preExecuteVerify(roomid, (liveStatus) => liveStatus === 1) !== "pass") {
 						this.logger.log(`粉丝勋章【${medal_name}】 主播【${nick_name}】（UID：${uid}，直播间：${roomid}）在下一轮观看前已不在直播或状态获取失败，${this.config.waitUntilLiving ? "回到等待队列" : "停止本次观看"}`);
 						this.runtimeStatus.setItemStatus("watch", medal, this.config.waitUntilLiving ? "waiting" : "failed", this.config.waitUntilLiving ? "主播已经下播，返回等待队列" : "主播已经下播，观看未完成");
@@ -2483,19 +2689,30 @@
 				const previousProgress = parsed.current;
 				this.logger.log(`粉丝勋章【${medal_name}】 开始直播间 ${roomid}（主播【${nick_name}】，UID：${uid}）的第 ${previousProgress + 1} 轮观看直播任务，本轮目标 ${minutes} 分钟`);
 				this.runtimeStatus.setCurrent("watch", medal, `正在观看直播，本轮目标 ${minutes} 分钟`, previousProgress + 1, target);
-				if (!await new RoomHeart(roomid, area_id, parent_area_id, uid, minutes * 60).start()) {
-					this.runtimeStatus.setItemStatus("watch", medal, "failed", "观看心跳执行失败");
+				const heartbeat = await new RoomHeart(roomid, area_id, parent_area_id, uid, minutes * 60).start();
+				if (isScriptStopping() || MedalModule.shouldStopForCrossDay()) return "stopAndMarkUncompleted";
+				if (heartbeat.reason === "missing-buvid") {
+					this.runtimeStatus.setItemStatus("watch", medal, "failed", "缺少 buvid，无法建立观看心跳");
 					return "markUncompleted";
 				}
-				await sleep(MedalModule.WAIT_MEDAL_UPDATE_DELAY);
-				medalData = await this.fetchMedalData(uid);
-				if (!medalData) {
-					this.logger.error(`粉丝勋章【${medal_name}】 完成一轮观看后无法获取最新任务进度，停止该房间，避免继续无效观看`);
-					this.runtimeStatus.setItemStatus("watch", medal, "failed", "完成一轮后无法获取最新任务进度");
-					return "markUncompleted";
+				this.logger.log(`粉丝勋章【${medal_name}】 本轮心跳成功累计 ${heartbeat.watchedSeconds}/${minutes * 60} 秒，结束原因：${heartbeat.reason}；正在确认B站进度`);
+				for (const waitMs of [
+					MedalModule.WAIT_MEDAL_UPDATE_DELAY,
+					12e3,
+					15e3
+				]) {
+					await sleep(waitMs);
+					if (isScriptStopping() || MedalModule.shouldStopForCrossDay()) return "stopAndMarkUncompleted";
+					medalData = await this.fetchMedalData(uid);
+					item = medalData ? MedalModule.findTaskInfo(medalData.task_info, "watchLive") : void 0;
+					parsed = item ? MedalModule.parseDailyLimit(item.sub_title) : null;
+					if (medalData?.reach_free_intimacy_limit || item?.is_done || parsed && parsed.current > previousProgress) break;
 				}
-				item = MedalModule.findTaskInfo(medalData.task_info, "watchLive");
-				parsed = item ? MedalModule.parseDailyLimit(item.sub_title) : null;
+				if (isScriptStopping() || MedalModule.shouldStopForCrossDay()) return "stopAndMarkUncompleted";
+				if (medalData?.reach_free_intimacy_limit) {
+					this.runtimeStatus.setItemStatus("watch", medal, "skipped", "储蓄亲密度已达上限，停止补看和刷新");
+					return "skipSleep";
+				}
 				if (!item || !parsed) {
 					this.logger.error(`粉丝勋章【${medal_name}】 完成一轮观看后无法解析最新任务进度，停止该房间，避免继续无效观看`);
 					this.runtimeStatus.setItemStatus("watch", medal, "failed", "完成一轮后无法解析最新任务进度");
@@ -2506,16 +2723,50 @@
 					this.runtimeStatus.setItemStatus("watch", medal, "completed", `观看任务已完成（${item.sub_title}）`);
 					return null;
 				}
-				if (parsed.current <= previousProgress) {
-					if (await this.preExecuteVerify(roomid, (liveStatus) => liveStatus === 1) !== "pass" && this.config.waitUntilLiving) {
-						this.logger.log(`粉丝勋章【${medal_name}】 本轮观看未计入且主播已经下播，回到等待队列`);
-						this.runtimeStatus.setItemStatus("watch", medal, "waiting", "本轮未计入且主播已下播，等待重新开播");
-						return "requeue";
-					}
-					this.logger.warn(`粉丝勋章【${medal_name}】 已发送 ${minutes} 分钟观看心跳，但B站任务进度仍为 ${item.sub_title}；停止该房间，避免继续无效观看`);
-					this.runtimeStatus.setItemStatus("watch", medal, "failed", `已观看 ${minutes} 分钟，但B站进度未增长（${item.sub_title}）`);
+				if (parsed.current < previousProgress) {
+					this.runtimeStatus.setItemStatus("watch", medal, "failed", "B站进度出现回退，停止自动补救，等待重新查询");
 					return "markUncompleted";
 				}
+				if (parsed.current === previousProgress) {
+					const verdict = await this.preExecuteVerify(roomid, (liveStatus) => liveStatus === 1);
+					if (verdict !== "pass") {
+						const reason = verdict === "fail" ? "主播已下播" : "无法确认开播状态";
+						this.logger.log(`粉丝勋章【${medal_name}】 ${reason}，不执行补看或刷新`);
+						this.runtimeStatus.setItemStatus("watch", medal, this.config.waitUntilLiving ? "waiting" : "failed", `${reason}，观看未完成`);
+						return this.config.waitUntilLiving ? "requeue" : "markUncompleted";
+					}
+					if (isScriptStopping() || MedalModule.shouldStopForCrossDay()) return "stopAndMarkUncompleted";
+					const action = recordWatchFailure(recovery, roomid, previousProgress);
+					Storage.setWatchRecovery(ownerUid, recovery);
+					if (action === "retry") {
+						this.logger.warn(`粉丝勋章【${medal_name}】 心跳成功累计 ${heartbeat.watchedSeconds}/${minutes * 60} 秒，B站进度仍为 ${item.sub_title}；15 秒后重新建立会话，补看一轮`);
+						this.runtimeStatus.setItemStatus("watch", medal, "running", `进度未增长，准备补看一轮（${item.sub_title}）`);
+						await sleep(15e3);
+						skipPreVerify = false;
+						continue;
+					}
+					if (action === "reload") {
+						const cacheStore = useCacheStore();
+						if (cacheStore.hasDocumentLock && window.self === window.top && cacheStore.currentScriptType === "Main") {
+							recovery.reloadUsed = true;
+							Storage.setWatchRecovery(ownerUid, recovery);
+							Storage.setModuleConfig(useModuleStore().moduleConfig);
+							this.runtimeStatus.setItemStatus("watch", medal, "waiting", "补看后仍无增长，正在安全刷新；今天最多一次");
+							this.logger.warn(`粉丝勋章【${medal_name}】 补看后B站进度仍为 ${item.sub_title}；保存恢复记录并刷新当前页面，等待旧文档退出后再接管`);
+							if (cacheStore.reloadForWatchRecovery()) return "stopAndMarkUncompleted";
+						}
+					}
+					recovery.rooms[roomid] = {
+						progress: previousProgress,
+						failures: 3
+					};
+					Storage.setWatchRecovery(ownerUid, recovery);
+					this.logger.warn(`粉丝勋章【${medal_name}】 B站进度仍为 ${item.sub_title}；补救已用尽或无法安全刷新，停止该房间`);
+					this.runtimeStatus.setItemStatus("watch", medal, "failed", `本轮心跳 ${heartbeat.watchedSeconds}/${minutes * 60} 秒；补救已停止（${item.sub_title}）`);
+					return "markUncompleted";
+				}
+				delete recovery.rooms[roomid];
+				Storage.setWatchRecovery(ownerUid, recovery);
 				if (singleRound) {
 					this.runtimeStatus.setItemStatus("watch", medal, "pending", `本轮已确认（${item.sub_title}），按本周收益重新选择主播`);
 					return "yield";
@@ -2582,7 +2833,7 @@
 			});
 		}
 		async run() {
-			if (this.isRunning) return;
+			if (this.isRunning || isScriptStopping()) return;
 			this.isRunning = true;
 			try {
 				await this.runTasks();
@@ -2630,6 +2881,7 @@
 						}
 					}
 				}
+				if (isScriptStopping()) return;
 				if (allCompleted) {
 					this.config._lastCompleteTime = tsm();
 					this.logger.log("观看直播任务已完成");
@@ -4573,7 +4825,9 @@
 						(0, vue.h)("ul", [
 							(0, vue.h)("li", "部分直播间因为没有设置直播分区导致任务无法完成。"),
 							(0, vue.h)("li", "只会在执行前确认主播正在直播后发送观看心跳。"),
-							(0, vue.h)("li", "每完成一轮观看都会读取B站任务进度，未计入时停止该房间。")
+							(0, vue.h)("li", "每轮结束后最多复查三次B站进度；没有增长时重新建立会话，补看一轮。"),
+							(0, vue.h)("li", "补看后仍无增长时尝试安全刷新当前页面，每个账号每天最多一次；刷新后仍失败则停止该房间。"),
+							(0, vue.h)("li", "只有支持浏览器独占锁的顶层主脚本可以自动刷新；其它情况停止补救并显示原因。")
 						]),
 						(0, vue.h)("div", [(0, vue.h)("strong", "注意："), (0, vue.h)("span", "使用本功能时不能以任何方式观看直播（网页、APP、电视），否则可能无法获得任何亲密度。")])
 					])
@@ -6692,7 +6946,8 @@
 	var pinia$1 = (0, pinia.createPinia)();
 	var cacheStore = useCacheStore(pinia$1);
 	var moduleStore = useModuleStore(pinia$1);
-	cacheStore.checkCurrentScriptType();
+	window.addEventListener("pagehide", stopScriptRequests);
+	await(cacheStore.checkCurrentScriptType());
 	logger.log("当前脚本的类型为", cacheStore.currentScriptType);
 	if (cacheStore.currentScriptType === "Main") cacheStore.startMainBLTHAliveHeartBeat();
 	moduleStore.loadModules("unknown");

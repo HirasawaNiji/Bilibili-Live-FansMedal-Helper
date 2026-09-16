@@ -3,8 +3,20 @@ import defaultValues from './defaultValues'
 import type { UiConfig, ModuleConfig, Cache } from '@/types'
 import _ from 'lodash'
 import type { WeeklyMedalRecords } from '../weekly-medal-stats'
+import { getRecoveryRecord, type WatchRecoveryRecord } from '../watch-recovery'
 
 class Storage {
+  public static getWatchRecovery(ownerUid: number): WatchRecoveryRecord {
+    return getRecoveryRecord(
+      GM_getValue<WatchRecoveryRecord | undefined>(`watchRecovery:${ownerUid}`),
+    )
+  }
+
+  public static setWatchRecovery(ownerUid: number, record: WatchRecoveryRecord): void {
+    // 独立存储，避免常规缓存的延迟写入覆盖刷新预算。
+    GM_setValue(`watchRecovery:${ownerUid}`, record)
+  }
+
   public static getWeeklyMedalStats(): WeeklyMedalRecords {
     return GM_getValue('weeklyMedalStats', {})
   }
