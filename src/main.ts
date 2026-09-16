@@ -11,6 +11,7 @@ import * as MyIconsVue from './components/icons'
 import './assets/css/base.css'
 import Logger from './library/logger'
 import { waitForMoment } from './library/utils'
+import { stopScriptRequests } from './library/script-lifecycle'
 
 const logger = new Logger('Main')
 
@@ -21,7 +22,8 @@ const pinia = createPinia()
 const cacheStore = useCacheStore(pinia)
 const moduleStore = useModuleStore(pinia)
 
-cacheStore.checkCurrentScriptType()
+window.addEventListener('pagehide', stopScriptRequests)
+await cacheStore.checkCurrentScriptType()
 logger.log('当前脚本的类型为', cacheStore.currentScriptType)
 
 if (cacheStore.currentScriptType === 'Main') {

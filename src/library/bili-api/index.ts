@@ -23,11 +23,15 @@ const BAPI: BapiMethods = {
     },
     getActivatedMedalInfo: (target_id, web_location = '444.260') => {
       const bili_jct = useBiliStore().cookies!.bili_jct
-      return request.live.get('/xlive/app-ucenter/v1/fansMedal/GetActivatedMedalInfo', {
-        csrf: bili_jct,
-        target_id, // 主播 uid
-        web_location,
-      })
+      return request.live.get(
+        '/xlive/app-ucenter/v1/fansMedal/GetActivatedMedalInfo',
+        {
+          csrf: bili_jct,
+          target_id, // 主播 uid
+          web_location,
+        },
+        { timeout: 30_000 },
+      )
     },
     likeReport: (room_id, anchor_id, click_time = 1, web_location = '444.8') => {
       const biliStore = useBiliStore()
@@ -113,6 +117,7 @@ const BAPI: BapiMethods = {
     E: (id, device, ruid, is_patch = 0, heart_beat = [], web_location = '444.8') => {
       const bili_jct = useBiliStore().cookies!.bili_jct
       return request.liveTrace.post('/xlive/data-interface/v1/x25Kn/E', null, {
+        timeout: 30_000,
         params: wbiSign({
           id: JSON.stringify(id),
           device: JSON.stringify(device),
@@ -140,6 +145,7 @@ const BAPI: BapiMethods = {
     ) => {
       const bili_jct = useBiliStore().cookies!.bili_jct
       return request.liveTrace.post('/xlive/data-interface/v1/x25Kn/X', null, {
+        timeout: 30_000,
         params: wbiSign({
           s,
           id: JSON.stringify(id),

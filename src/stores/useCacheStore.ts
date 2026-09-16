@@ -6,6 +6,8 @@ import type { LiveData } from '@/library/bili-api/data'
 import { unsafeWindow } from '$'
 import { tsm } from '@/library/luxon'
 import { useBiliStore } from './useBiliStore'
+import { acquireDocumentLock, stopScriptRequests } from '@/library/script-lifecycle'
+import { WATCH_RELOAD_MARKER } from '@/library/watch-recovery'
 
 type ScriptType = 'Main' | 'SubMain' | 'Other'
 
@@ -80,6 +82,7 @@ export const useCacheStore = defineStore('cache', () => {
    * 增加这一概念主要时为了确保任务类模块不会重复运行（比如完成各种每日任务的模块）。
    */
   const currentScriptType = ref<ScriptType>('Main')
+  const hasDocumentLock = ref(false)
 
   /**
    * Main BLTH 存活心跳
@@ -103,7 +106,42 @@ export const useCacheStore = defineStore('cache', () => {
   /**
    * 检查当前脚本的类型
    */
-  function checkCurrentScriptType(): void {
+  async function checkCurrentScriptType(): Promise<void> {
+    const top = unsafeWindow.top!
+    if (navigator.locks) {
+      if (window.self !== window.top) {
+        // 子 frame 只跟随顶层页面，不能与顶层争抢主锁。
+        await top.__BLTH_MAIN_READY__
+        hasDocumentLock.value = Boolean(top.__BLTH_MAIN_FLAG__)
+        currentScriptType.value = hasDocumentLock.value ? 'SubMain' : 'Other'
+        return
+      }
+      if (top.__BLTH_MAIN_READY__) {
+        currentScriptType.value = 'Other'
+        return
+      }
+      let recovering = false
+      try {
+        const marker = Number(sessionStorage.getItem(WATCH_RELOAD_MARKER))
+        recovering = marker > 0 && Date.now() - marker < 120_000
+        sessionStorage.removeItem(WATCH_RELOAD_MARKER)
+      } catch {
+        /* 存储不可用时仍执行独占锁检查。 */
+      }
+      const ready = acquireDocumentLock(navigator.locks, recovering).then((acquired) => {
+        hasDocumentLock.value = acquired
+        currentScriptType.value = acquired ? 'Main' : 'Other'
+        if (acquired) {
+          top.__BLTH_MAIN_FLAG__ = '🚩'
+          cache.value.lastAliveHeartBeatTime = tsm()
+          Storage.setCache(toRaw(cache.value))
+        }
+        return acquired
+      })
+      top.__BLTH_MAIN_READY__ = ready
+      await ready
+      return
+    }
     if (
       cache.value.lastAliveHeartBeatTime !== 0 &&
       tsm() - cache.value.lastAliveHeartBeatTime < 8000 // 容许 3 秒的误差
@@ -123,6 +161,29 @@ export const useCacheStore = defineStore('cache', () => {
     }
   }
 
+  /** 自动恢复只刷新持有主锁的顶层页面；锁由浏览器在旧文档销毁后释放。 */
+  function reloadForWatchRecovery(): boolean {
+    if (
+      !hasDocumentLock.value ||
+      window.self !== window.top ||
+      currentScriptType.value !== 'Main'
+    ) {
+      return false
+    }
+    try {
+      sessionStorage.setItem(WATCH_RELOAD_MARKER, String(Date.now()))
+    } catch {
+      return false
+    }
+    stopScriptRequests()
+    try {
+      window.location.reload()
+    } catch {
+      return false
+    }
+    return true
+  }
+
   // 监听缓存信息的变化，写缓存
   watch(cache, (newCache: Cache) => Storage.setCache(newCache), { deep: true })
 
@@ -132,6 +193,8 @@ export const useCacheStore = defineStore('cache', () => {
     updateFreeIntimacyReminder,
     pruneFreeIntimacyReminders,
     currentScriptType,
+    hasDocumentLock,
+    reloadForWatchRecovery,
     startMainBLTHAliveHeartBeat,
     checkCurrentScriptType,
   }

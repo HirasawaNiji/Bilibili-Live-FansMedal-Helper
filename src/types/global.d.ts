@@ -50,6 +50,7 @@ declare global {
     }
 
     __BLTH_MAIN_FLAG__?: string
+    __BLTH_MAIN_READY__?: Promise<boolean>
   }
 }
 
