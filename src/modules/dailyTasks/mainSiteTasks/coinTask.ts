@@ -76,18 +76,24 @@ class CoinTask extends BaseModule {
             this.logger.log('每日投币任务已完成')
             this.config._lastCompleteTime = tsm()
             this.status = 'done'
-            break
+            return
           }
         } else if (result === 1) {
           // 硬币余额不足，终止任务，不记录完成时间
           this.logger.warn('硬币余额不足，每日投币任务终止')
           this.status = 'error'
-          break
+          return
         } else {
-          // 接口报错或网络错误
-          break
+          this.logger.error('投币接口报错或发生网络错误，每日投币任务终止')
+          this.status = 'error'
+          return
         }
       }
+    }
+
+    if (left_coin_num > 0) {
+      this.logger.warn('每日投币任务结束，动态视频数量不足，视为本轮结束，下次运行会继续尝试')
+      this.status = 'done'
     }
   }
 
