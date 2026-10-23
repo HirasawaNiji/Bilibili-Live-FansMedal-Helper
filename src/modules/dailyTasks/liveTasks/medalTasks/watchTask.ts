@@ -890,8 +890,13 @@ class WatchTask extends MedalModule {
         this.status = 'done'
         this.runtimeStatus.setTaskPhase('watch', 'completed', '观看直播任务已全部完成')
       } else {
-        this.status = ''
-        this.runtimeStatus.setTaskPhase('watch', 'waiting', '仍有观看直播任务未完成')
+        this.status = 'done'
+        this.logger.warn('本轮观看任务已结束，部分勋章未完成，下次运行会继续尝试')
+        this.runtimeStatus.setTaskPhase(
+          'watch',
+          'error',
+          '本轮已结束，仍有观看任务未完成，下次运行重试',
+        )
       }
     } else {
       if (isNowBefore(0, 5)) {

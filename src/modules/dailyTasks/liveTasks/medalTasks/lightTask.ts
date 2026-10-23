@@ -237,8 +237,13 @@ class LightTask extends MedalModule {
         this.logger.log('点亮熄灭勋章任务已完成')
         this.runtimeStatus.setTaskPhase('light', 'completed', '点亮熄灭勋章任务已全部完成')
       } else {
-        this.status = 'waiting'
-        this.runtimeStatus.setTaskPhase('light', 'waiting', '仍有点亮任务未完成')
+        this.status = 'done'
+        this.logger.warn('本轮点亮任务已结束，部分勋章未完成，下次运行会继续尝试')
+        this.runtimeStatus.setTaskPhase(
+          'light',
+          'error',
+          '本轮已结束，仍有点亮任务未完成，下次运行重试',
+        )
       }
     } else {
       if (isNowBefore(0, 5)) {

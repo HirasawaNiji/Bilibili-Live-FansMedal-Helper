@@ -11,7 +11,7 @@ export default defineConfig({
     monkey({
       entry: 'src/main.ts',
       userscript: {
-        version: '7.5.2',
+        version: '7.5.3',
         name: {
           '': 'Bilibili Live FansMedal Helper',
           en: 'Bilibili Live FansMedal Helper',
@@ -65,6 +65,7 @@ export default defineConfig({
       },
       build: {
         externalGlobals: {
+          'ajax-hook': cdn.unpkg('ah', 'dist/ajaxhook.min.js'),
           vue: cdn.unpkg('Vue', 'dist/vue.global.prod.js').concat(
             // For pinia, another solution is .concat('https://unpkg.com/vue-demi@latest/lib/index.iife.js')
             util.dataUrl(';window.Vue=Vue;window.VueDemi=Vue;'),
