@@ -119,20 +119,11 @@ interface ModuleConfig {
 }
 
 type MenuIndex =
-  | 'RealtimeStatus'
-  | 'WeeklySummary'
-  | 'MainSiteTasks'
-  | 'LiveTasks'
-  | 'OtherTasks'
-  | 'EnhanceExperience'
-  | 'RemoveElement'
-  | 'ScriptSettings'
+  'WeeklySummary' | 'MainSiteTasks' | 'LiveTasks' | 'OtherTasks' | 'EnhanceExperience'
 
 interface UiConfig {
-  isCollapse: boolean
   isShowPanel: boolean
   activeMenuIndex: MenuIndex
-  panelWidthPercent: number
   medalInfoPanelIsSortMode: {
     light: boolean
     like: boolean

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useCacheStore, useRuntimeStatusStore } from '@/stores'
+import FreeIntimacyReminder from './FreeIntimacyReminder.vue'
 import type {
   RuntimeItemStatus,
   RuntimeTaskKey,
@@ -9,9 +10,7 @@ import type {
 
 const cacheStore = useCacheStore()
 const runtimeStore = useRuntimeStatusStore()
-
 const taskOrder: RuntimeTaskKey[] = ['watch', 'like', 'light']
-
 const phaseLabels: Record<RuntimeTaskPhase, string> = {
   idle: '尚未启动',
   running: '正在运行',
@@ -19,18 +18,13 @@ const phaseLabels: Record<RuntimeTaskPhase, string> = {
   completed: '已完成',
   error: '发生错误',
 }
-
-const phaseTagTypes: Record<
-  RuntimeTaskPhase,
-  'info' | 'primary' | 'warning' | 'success' | 'danger'
-> = {
+const phaseTagTypes = {
   idle: 'info',
   running: 'primary',
   waiting: 'warning',
   completed: 'success',
   error: 'danger',
-}
-
+} as const
 const itemLabels: Record<RuntimeItemStatus, string> = {
   pending: '待处理',
   running: '正在执行',
@@ -39,19 +33,14 @@ const itemLabels: Record<RuntimeItemStatus, string> = {
   failed: '未完成',
   skipped: '已跳过',
 }
-
-const itemTagTypes: Record<
-  RuntimeItemStatus,
-  'info' | 'primary' | 'warning' | 'success' | 'danger'
-> = {
+const itemTagTypes = {
   pending: 'info',
   running: 'primary',
   waiting: 'warning',
   completed: 'success',
   failed: 'danger',
   skipped: 'warning',
-}
-
+} as const
 const statusOrder: Record<RuntimeItemStatus, number> = {
   running: 0,
   waiting: 1,
@@ -60,32 +49,29 @@ const statusOrder: Record<RuntimeItemStatus, number> = {
   skipped: 4,
   completed: 5,
 }
-
 const taskRows = (task: RuntimeTaskKey) =>
   Object.values(runtimeStore.tasks[task].items).sort(
     (a, b) => statusOrder[a.status] - statusOrder[b.status] || b.updatedAt - a.updatedAt,
   )
-
-const getItemLabel = (status: RuntimeItemStatus) => itemLabels[status]
-const getItemTagType = (status: RuntimeItemStatus) => itemTagTypes[status]
-
 const taskCounts = (task: RuntimeTaskKey) => {
   const rows = Object.values(runtimeStore.tasks[task].items)
+  const completed = rows.filter((item) => item.status === 'completed').length
   return {
-    completed: rows.filter((item) => item.status === 'completed').length,
+    total: rows.length,
+    completed,
     unfinished: rows.filter((item) => item.status !== 'completed' && item.status !== 'skipped')
       .length,
     waiting: rows.filter((item) => item.status === 'waiting').length,
+    percentage: rows.length ? Math.round((completed / rows.length) * 100) : 0,
   }
 }
-
 const recentEvents = computed(() => runtimeStore.events.slice(0, 50))
 const formatTime = (timestamp: number) =>
   new Date(timestamp).toLocaleTimeString('zh-CN', { hour12: false })
 </script>
 
 <template>
-  <div>
+  <div class="runtime-status">
     <el-alert
       v-if="cacheStore.currentScriptType === 'Other'"
       class="instance-warning"
@@ -94,127 +80,285 @@ const formatTime = (timestamp: number) =>
       :closable="false"
       show-icon
     />
-
-    <el-card v-for="task in taskOrder" :key="task" class="task-card" shadow="never">
-      <template #header>
-        <div class="task-header">
-          <span class="task-title">{{ runtimeStore.taskNames[task] }}</span>
-          <el-space>
-            <el-tag type="success">已完成 {{ taskCounts(task).completed }}</el-tag>
-            <el-tag type="warning">待完成 {{ taskCounts(task).unfinished }}</el-tag>
-            <el-tag v-if="taskCounts(task).waiting" type="warning" effect="plain">
-              等待开播 {{ taskCounts(task).waiting }}
-            </el-tag>
-            <el-tag :type="phaseTagTypes[runtimeStore.tasks[task].phase]" effect="dark">
-              {{ phaseLabels[runtimeStore.tasks[task].phase] }}
-            </el-tag>
-          </el-space>
-        </div>
-      </template>
-
-      <el-alert
-        v-if="runtimeStore.tasks[task].current"
-        class="current-task"
-        type="info"
-        :closable="false"
-        show-icon
-      >
-        <template #title>
-          当前正在处理主播【{{ runtimeStore.tasks[task].current!.nickName }}】的直播间
-          {{ runtimeStore.tasks[task].current!.roomId }}：
-          {{ runtimeStore.tasks[task].current!.detail }}
-          <template v-if="runtimeStore.tasks[task].current!.round">
-            （第 {{ runtimeStore.tasks[task].current!.round }} 轮<span
-              v-if="runtimeStore.tasks[task].current!.targetRounds"
-              >/共 {{ runtimeStore.tasks[task].current!.targetRounds }} 轮</span
-            >）
-          </template>
-        </template>
-      </el-alert>
-      <el-text v-else type="info">{{ runtimeStore.tasks[task].message }}</el-text>
-
-      <el-table
-        v-if="taskRows(task).length"
-        class="status-table"
-        :data="taskRows(task)"
-        size="small"
-        max-height="260"
-      >
-        <el-table-column prop="nickName" label="主播" min-width="120" />
-        <el-table-column prop="medalName" label="粉丝牌" min-width="90" />
-        <el-table-column label="直播间" width="100" align="center">
-          <template #default="scope">
-            <el-link
-              :href="`https://live.bilibili.com/${scope.row.roomId}`"
-              type="primary"
-              target="_blank"
-            >
-              {{ scope.row.roomId }}
-            </el-link>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="100" align="center">
-          <template #default="scope">
-            <el-tag :type="getItemTagType(scope.row.status)" size="small">
-              {{ getItemLabel(scope.row.status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="detail" label="说明" min-width="180" />
-      </el-table>
-      <el-empty v-else :image-size="54" description="本次运行暂时没有主播记录" />
-    </el-card>
-
-    <el-card class="event-card" shadow="never">
-      <template #header>
-        <span class="task-title">最近动态</span>
-      </template>
-      <el-timeline v-if="recentEvents.length">
-        <el-timeline-item
-          v-for="event in recentEvents"
-          :key="event.id"
-          :timestamp="formatTime(event.time)"
-          placement="top"
-          :type="event.level === 'error' ? 'danger' : event.level"
+    <section v-for="task in taskOrder" :key="task" class="task-card">
+      <div class="task-header">
+        <h3>{{ runtimeStore.taskNames[task] }}</h3>
+        <el-tag :type="phaseTagTypes[runtimeStore.tasks[task].phase]" size="small" effect="plain">
+          {{ phaseLabels[runtimeStore.tasks[task].phase] }}
+        </el-tag>
+      </div>
+      <div class="task-counts">
+        <span
+          >已完成 <b>{{ taskCounts(task).completed }}</b> / {{ taskCounts(task).total }}</span
         >
-          <el-tag size="small" type="info">{{ runtimeStore.taskNames[event.task] }}</el-tag>
-          {{ event.message }}
-        </el-timeline-item>
-      </el-timeline>
-      <el-empty v-else :image-size="54" description="暂无任务动态" />
-    </el-card>
+        <span>待完成 {{ taskCounts(task).unfinished }}</span>
+      </div>
+      <el-progress
+        :percentage="taskCounts(task).percentage"
+        :show-text="false"
+        :stroke-width="5"
+        :status="runtimeStore.tasks[task].phase === 'completed' ? 'success' : undefined"
+      />
+      <div v-if="runtimeStore.tasks[task].current" class="current-task">
+        <span class="current-label">当前主播</span>
+        <el-link
+          :href="`https://live.bilibili.com/${runtimeStore.tasks[task].current!.roomId}`"
+          target="_blank"
+          rel="noreferrer"
+          type="primary"
+          >{{ runtimeStore.tasks[task].current!.nickName }}</el-link
+        >
+        <p>{{ runtimeStore.tasks[task].current!.detail }}</p>
+        <span v-if="runtimeStore.tasks[task].current!.round" class="rounds">
+          第 {{ runtimeStore.tasks[task].current!.round }} 轮
+          <template v-if="runtimeStore.tasks[task].current!.targetRounds">
+            / 共 {{ runtimeStore.tasks[task].current!.targetRounds }} 轮
+          </template>
+        </span>
+      </div>
+      <p v-else class="task-message">{{ runtimeStore.tasks[task].message }}</p>
+      <p v-if="taskCounts(task).waiting" class="waiting-hint">
+        {{ taskCounts(task).waiting }} 位主播等待开播
+      </p>
+      <FreeIntimacyReminder v-if="task === 'watch'" />
+      <details v-if="taskRows(task).length" class="task-details">
+        <summary>
+          主播记录 <span>{{ taskRows(task).length }}</span>
+        </summary>
+        <div class="record-list">
+          <div v-for="item in taskRows(task)" :key="item.roomId" class="record">
+            <div class="record-heading">
+              <el-link
+                :href="`https://live.bilibili.com/${item.roomId}`"
+                target="_blank"
+                rel="noreferrer"
+              >
+                {{ item.nickName }}
+              </el-link>
+              <el-tag :type="itemTagTypes[item.status]" size="small">{{
+                itemLabels[item.status]
+              }}</el-tag>
+            </div>
+            <p class="record-meta">{{ item.medalName }} · 房间 {{ item.roomId }}</p>
+            <p>{{ item.detail }}</p>
+            <p v-if="item.round">
+              第 {{ item.round }} 轮<template v-if="item.targetRounds">
+                / 共 {{ item.targetRounds }} 轮</template
+              >
+            </p>
+          </div>
+        </div>
+      </details>
+      <p v-else class="empty-records">暂无主播记录</p>
+    </section>
+
+    <section class="event-section">
+      <div class="event-heading">
+        <h3>最近动态</h3>
+        <span>最近 {{ recentEvents.length }} 条</span>
+      </div>
+      <div v-if="recentEvents.length" class="event-list">
+        <div v-for="event in recentEvents" :key="event.id" class="event" :class="event.level">
+          <div class="event-meta">
+            <span>{{ runtimeStore.taskNames[event.task] }}</span>
+            <time>{{ formatTime(event.time) }}</time>
+          </div>
+          <p>{{ event.message }}</p>
+        </div>
+      </div>
+      <p v-else class="empty-events">任务开始后，运行动态会显示在这里。</p>
+    </section>
   </div>
 </template>
 
 <style scoped>
+.runtime-status {
+  padding: 0 20px 20px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .instance-warning,
 .task-card {
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
-.instance-warning :deep(.el-alert__title) {
-  font-weight: 600;
-  color: var(--el-color-danger);
+.task-card {
+  padding: 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 10px;
 }
 
-.task-header {
+.task-header,
+.task-counts,
+.record-heading,
+.event-heading,
+.event-meta {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
   justify-content: space-between;
 }
 
-.task-title {
+h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.task-counts {
+  margin: 10px 0 8px;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+}
+
+.task-counts b {
+  margin-left: 3px;
+  font-size: 18px;
+  color: var(--el-text-color-primary);
+}
+
+.current-task {
+  padding: 9px 10px;
+  margin-top: 10px;
+  background: var(--el-color-primary-light-9);
+  border-radius: 6px;
+}
+
+.current-label {
+  margin-right: 8px;
+  font-size: 10px;
+  color: var(--el-text-color-secondary);
+}
+
+.current-task .el-link {
+  font-size: 12px;
   font-weight: 600;
 }
 
-.current-task,
-.status-table {
+p {
+  margin: 6px 0 0;
+  line-height: 1.7;
+}
+
+.rounds,
+.task-message,
+.record-meta {
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+}
+
+.task-message {
   margin-top: 12px;
 }
 
-.event-card :deep(.el-timeline) {
-  padding-left: 8px;
+.waiting-hint {
+  font-size: 11px;
+  color: var(--el-color-warning);
+}
+
+.task-details {
+  padding-top: 8px;
+  margin-top: 10px;
+  border-top: 1px solid var(--el-border-color-extra-light);
+}
+
+summary {
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  cursor: pointer;
+}
+
+summary span {
+  float: right;
+}
+
+.record-list {
+  max-height: 280px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.record {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--el-border-color-extra-light);
+}
+
+.record-heading .el-link {
+  min-width: 0;
+  font-size: 12px;
+}
+
+.record-heading .el-tag {
+  flex-shrink: 0;
+}
+
+.empty-records,
+.empty-events {
+  font-size: 11px;
+  color: var(--el-text-color-placeholder);
+}
+
+.empty-records {
+  margin-top: 12px;
+}
+
+.event-heading {
+  margin: 22px 0 16px;
+}
+
+.event-heading > span,
+.event-meta {
+  font-size: 10px;
+  color: var(--el-text-color-secondary);
+}
+
+.event {
+  position: relative;
+  padding: 0 0 18px 15px;
+  margin-left: 3px;
+  border-left: 1px solid var(--el-border-color-lighter);
+}
+
+.event::before {
+  position: absolute;
+  top: 3px;
+  left: -4px;
+  width: 7px;
+  height: 7px;
+  content: '';
+  background: var(--el-color-primary);
+  border-radius: 50%;
+}
+
+.event.success::before {
+  background: var(--el-color-success);
+}
+
+.event.warning::before {
+  background: var(--el-color-warning);
+}
+
+.event.error::before {
+  background: var(--el-color-danger);
+}
+
+.event:last-child {
+  border-left-color: transparent;
+}
+
+.event p {
+  font-size: 11px;
+}
+
+@media (width <= 1180px) {
+  .runtime-status {
+    padding: 0 14px 14px;
+  }
+
+  .task-card {
+    padding: 13px;
+  }
 }
 </style>

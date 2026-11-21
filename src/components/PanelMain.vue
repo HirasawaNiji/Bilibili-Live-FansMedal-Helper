@@ -1,34 +1,17 @@
-<script lang="ts">
+<script setup lang="ts">
+import { useUIStore } from '@/stores'
 import MainSiteTasks from './MainSiteTasks.vue'
 import LiveTasks from './LiveTasks.vue'
 import OtherTasks from './OtherTasks.vue'
 import EnhanceExperience from './EnhanceExperience.vue'
-import RemoveElement from './RemoveElement.vue'
-import ScriptSettings from './ScriptSettings.vue'
-import RealtimeStatus from './RealtimeStatus.vue'
 import WeeklySummary from './WeeklyMedalStats.vue'
-import { defineComponent } from 'vue'
 
-// 注册对当前组件实例可用的组件
-export default defineComponent({
-  components: {
-    RealtimeStatus,
-    WeeklySummary,
-    MainSiteTasks,
-    LiveTasks,
-    OtherTasks,
-    EnhanceExperience,
-    RemoveElement,
-    ScriptSettings,
-  },
-})
-</script>
-
-<script setup lang="ts">
-import { useUIStore } from '@/stores'
 const uiStore = useUIStore()
+const pages = { MainSiteTasks, LiveTasks, OtherTasks, EnhanceExperience, WeeklySummary }
 </script>
 
 <template>
-  <component :is="uiStore.uiConfig.activeMenuIndex"></component>
+  <KeepAlive>
+    <component :is="pages[uiStore.uiConfig.activeMenuIndex]" />
+  </KeepAlive>
 </template>

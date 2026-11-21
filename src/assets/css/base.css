@@ -46,31 +46,31 @@ ol {
  */
 html[lab-style*='adaptive'] {
   @media screen and (width >= 1930px) {
-    .base {
+    .blth-panel-overlay {
       zoom: calc(15 / 16);
     }
   }
 
   @media screen and (width >= 2058px) {
-    .base {
+    .blth-panel-overlay {
       zoom: calc(3 / 4);
     }
   }
 
   @media screen and (width >= 2570px) {
-    .base {
+    .blth-panel-overlay {
       zoom: calc(2 / 3);
     }
   }
 
   @media screen and (width >= 3210px) {
-    .base {
+    .blth-panel-overlay {
       zoom: calc(1 / 2);
     }
   }
 
   @media screen and (width >= 3850px) {
-    .base {
+    .blth-panel-overlay {
       zoom: calc(15 / 32);
     }
   }

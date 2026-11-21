@@ -1,7 +1,7 @@
 {
   "name": "bilibili-live-tasks-helper",
   "private": true,
-  "version": "7.5.3",
+  "version": "7.6.0",
   "type": "module",
   "scripts": {
     "test": "node --test scripts/*.test.mjs",
@@ -9,6 +9,7 @@
     "build": "run-p type-check \"build-minify {@}\" --",
     "build-minify": "run-s \"build-only {@}\" minify --",
     "preview": "vite preview",
+    "preview:ui": "vite --config scripts/ui-preview/vite.config.mjs",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
     "lint": "run-s -c lint:script lint:style",

@@ -11,7 +11,7 @@ export default defineConfig({
     monkey({
       entry: 'src/main.ts',
       userscript: {
-        version: '7.5.3',
+        version: '7.6.0',
         name: {
           '': 'Bilibili Live FansMedal Helper',
           en: 'Bilibili Live FansMedal Helper',

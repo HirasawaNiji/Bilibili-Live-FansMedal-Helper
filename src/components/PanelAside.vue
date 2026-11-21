@@ -1,108 +1,101 @@
 <script setup lang="ts">
 import { useUIStore } from '@/stores'
 import type { MenuIndex } from '@/types'
+import { Calendar, Monitor, VideoCamera, House, Grid } from '@element-plus/icons-vue'
 
 const uiStore = useUIStore()
-
-interface MenuItem {
-  icon: string
-  title: string
-  index: string
-  subs?: SubMenuItem[]
-}
-
-interface SubMenuItem {
-  title: string
-  index: string
-}
-
-const items: MenuItem[] = [
-  {
-    icon: 'DataAnalysis',
-    title: '实时状态',
-    index: 'RealtimeStatus',
-  },
-  {
-    icon: 'Calendar',
-    title: '每周小结',
-    index: 'WeeklySummary',
-  },
-  {
-    icon: 'Tasks',
-    title: '每日任务',
-    index: 'DailyTasks', // 有子菜单，index 无所谓
-    subs: [
-      {
-        title: '主站任务',
-        index: 'MainSiteTasks', // index 是组件名
-      },
-      {
-        title: '直播任务',
-        index: 'LiveTasks',
-      },
-      {
-        title: '其它任务',
-        index: 'OtherTasks',
-      },
-    ],
-  },
-  {
-    icon: 'Monitor',
-    title: '体验优化',
-    index: 'EnhanceExperience',
-  },
-  {
-    icon: 'Scissor',
-    title: '移除元素',
-    index: 'RemoveElement',
-  },
-  {
-    icon: 'Setting',
-    title: '设置',
-    index: 'ScriptSettings',
-  },
-]
+const taskItems = [
+  { index: 'MainSiteTasks', title: '主站任务', icon: House },
+  { index: 'LiveTasks', title: '直播任务', icon: VideoCamera },
+  { index: 'OtherTasks', title: '其它任务', icon: Grid },
+] as const
 </script>
 
 <template>
-  <el-menu
-    id="aside-el-menu"
-    :default-active="uiStore.uiConfig.activeMenuIndex"
-    :style="{ 'min-height': uiStore.scrollBarHeight }"
-    :collapse="uiStore.uiConfig.isCollapse"
-    unique-opened
-    @select="(index: string) => uiStore.setActiveMenuIndex(index as MenuIndex)"
-  >
-    <template v-for="item in items">
-      <template v-if="item.subs">
-        <el-sub-menu :key="item.index" :index="item.index">
-          <template #title>
-            <el-icon>
-              <component :is="item.icon"></component>
-            </el-icon>
-            <span>{{ item.title }}</span>
-          </template>
-          <el-menu-item v-for="subItem in item.subs" :key="subItem.index" :index="subItem.index">
-            {{ subItem.title }}
-          </el-menu-item>
-        </el-sub-menu>
-      </template>
-      <template v-else>
-        <el-menu-item :key="item.index" :index="item.index">
-          <el-icon>
-            <component :is="item.icon"></component>
-          </el-icon>
-          <template #title>
-            {{ item.title }}
-          </template>
+  <nav class="panel-nav" aria-label="控制面板导航">
+    <p class="nav-label">工作台</p>
+    <el-menu
+      :default-active="uiStore.uiConfig.activeMenuIndex"
+      @select="(index: string) => uiStore.setActiveMenuIndex(index as MenuIndex)"
+    >
+      <el-menu-item index="WeeklySummary">
+        <el-icon><Calendar /></el-icon>
+        <span>每周小结</span>
+      </el-menu-item>
+      <el-menu-item-group title="每日任务">
+        <el-menu-item v-for="item in taskItems" :key="item.index" :index="item.index">
+          <el-icon><component :is="item.icon" /></el-icon>
+          <span>{{ item.title }}</span>
         </el-menu-item>
-      </template>
-    </template>
-  </el-menu>
+      </el-menu-item-group>
+      <el-menu-item-group title="个性化">
+        <el-menu-item index="EnhanceExperience">
+          <el-icon><Monitor /></el-icon>
+          <span>体验优化</span>
+        </el-menu-item>
+      </el-menu-item-group>
+    </el-menu>
+  </nav>
+  <div class="nav-footer"><span class="save-dot" /> 配置自动保存</div>
 </template>
 
 <style scoped>
-#aside-el-menu:not(.el-menu--collapse) {
-  width: 150px;
+.panel-nav {
+  flex: 1;
+  padding: 22px 10px;
+  overflow-y: auto;
+}
+
+.nav-label {
+  margin: 0 14px 10px;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  letter-spacing: 1px;
+}
+
+.el-menu {
+  background: transparent;
+  border-right: 0;
+}
+
+.el-menu-item {
+  height: 44px;
+  padding: 0 14px !important;
+  margin-bottom: 5px;
+  font-size: 13px;
+  border-radius: 8px;
+}
+
+.el-menu-item.is-active {
+  font-weight: 600;
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+}
+
+.el-menu-item .el-icon {
+  margin-right: 10px;
+  font-size: 18px;
+}
+
+:deep(.el-menu-item-group__title) {
+  padding: 20px 14px 10px;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  letter-spacing: 1px;
+}
+
+.nav-footer {
+  padding: 20px;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+}
+
+.save-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  background: var(--el-color-success);
+  border-radius: 50%;
 }
 </style>
