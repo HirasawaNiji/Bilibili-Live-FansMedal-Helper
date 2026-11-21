@@ -71,6 +71,5 @@ const config = moduleStore.moduleConfig.RemoveElement
         <Info :item="helpInfo.RemoveElement.removeLiveMosaic" />
       </el-space>
     </el-row>
-    <el-divider />
   </div>
 </template>

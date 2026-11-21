@@ -8,10 +8,8 @@ interface DefaultValues {
 
 const defaultValues: DefaultValues = {
   ui: {
-    isCollapse: false,
     isShowPanel: true,
     activeMenuIndex: 'MainSiteTasks',
-    panelWidthPercent: 45,
     medalInfoPanelIsSortMode: {
       light: false,
       like: false,

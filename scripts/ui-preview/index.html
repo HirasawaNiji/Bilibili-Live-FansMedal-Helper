@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BLTH 控制面板 · UI 预览</title>
+    <link rel="icon" href="data:," />
+    <style>
+      body {
+        margin: 0;
+        background: #edf1f5;
+        font-family: 'Microsoft YaHei', sans-serif;
+      }
+      .preview-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 64px;
+        padding: 0 40px;
+        color: #657589;
+        background: white;
+        font-size: 13px;
+      }
+      .preview-header b {
+        color: #23ade5;
+        font-size: 24px;
+      }
+      .preview-background {
+        display: grid;
+        grid-template-columns: 1fr 300px;
+        gap: 24px;
+        max-width: 1400px;
+        padding: 36px;
+        margin: auto;
+      }
+      .preview-room {
+        padding: 24px;
+        background: white;
+        border-radius: 12px;
+      }
+      .normal-row-ctnr {
+        position: relative;
+        height: 40px;
+      }
+      .normal-row-ctnr > span {
+        display: inline-block;
+        padding: 8px 0;
+        color: #667788;
+      }
+      .preview-player {
+        display: grid;
+        height: 570px;
+        margin-top: 20px;
+        color: #6b839c;
+        background: #152638;
+        border-radius: 8px;
+        place-items: center;
+      }
+      .preview-chat {
+        background: white;
+        border-radius: 12px;
+      }
+      .preview-label {
+        position: fixed;
+        right: 20px;
+        bottom: 12px;
+        z-index: 4000;
+        font-size: 11px;
+        color: #fff;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="preview-header">
+      <b>bilibili 直播</b><span>关注　　直播　　分区　　动态　　我的</span>
+    </div>
+    <div class="preview-background">
+      <div id="player-ctnr" class="preview-room">
+        <div class="header-info-ctnr">
+          <div class="normal-row-ctnr"><span>直播间界面示意</span></div>
+        </div>
+        <div class="preview-player">直播画面</div>
+      </div>
+      <div class="preview-chat"></div>
+    </div>
+    <div class="preview-label">UI 预览 · 示例数据 · 不执行任务</div>
+    <div id="BLTH"></div>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

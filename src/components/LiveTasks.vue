@@ -1,16 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { useModuleStore, useBiliStore, useCacheStore, useUIStore } from '@/stores'
-import { Clock, Edit, RefreshRight, SemiSelect } from '@element-plus/icons-vue'
-import { ElMessage, ElTable, type TableInstance } from 'element-plus'
+import { Clock, Edit, SemiSelect } from '@element-plus/icons-vue'
+import { ElTable, type TableInstance } from 'element-plus'
 import helpInfo from '@/library/help-info'
 import { VueDraggable } from 'vue-draggable-plus'
 import { arrayToMap } from '@/library/utils'
-import {
-  refreshFreeIntimacyReminders,
-  waitForFansMedalsReady,
-} from '@/library/free-intimacy-reminders'
-
 interface MedalInfoRow {
   avatar: string
   nick_name: string
@@ -37,54 +32,6 @@ const medalTableMaxHeight = screen.height * 0.55
 const config = moduleStore.moduleConfig.DailyTasks.LiveTasks
 const status = moduleStore.moduleStatus.DailyTasks.LiveTasks
 const reset = moduleStore.moduleReset.DailyTasks.LiveTasks
-
-// ───── 储蓄亲密度提醒 ─────
-const intimacyReminders = computed(() => cacheStore.freeIntimacyReminders)
-const intimacyReminderRefreshing = ref(false)
-
-/** 扫描全部粉丝勋章，刷新储蓄亲密度达到90的提醒名单及其开播状态 */
-const handleRefreshIntimacyReminders = async () => {
-  if (intimacyReminderRefreshing.value) return
-
-  if (cacheStore.currentScriptType === 'Other') {
-    ElMessage.error('当前脚本未正常运行，请保留一个直播间并刷新该页面。')
-    return
-  }
-
-  intimacyReminderRefreshing.value = true
-
-  try {
-    if (biliStore.fansMedalsMeta.status === 'loading') {
-      await waitForFansMedalsReady()
-    } else if (biliStore.fansMedalsMeta.status !== 'loaded') {
-      await moduleStore.rerunModule('Default_FansMedals', true)
-    }
-
-    if (!(await waitForFansMedalsReady())) {
-      throw new Error('粉丝勋章列表加载失败或等待超时')
-    }
-
-    const result = await refreshFreeIntimacyReminders()
-
-    if (result.intimacyFailedCount > 0 || result.liveStatusFailedCount > 0) {
-      const details = [
-        result.intimacyFailedCount > 0 ? `${result.intimacyFailedCount} 个亲密度查询失败` : '',
-        result.liveStatusFailedCount > 0
-          ? `${result.liveStatusFailedCount} 个开播状态查询失败`
-          : '',
-      ]
-        .filter(Boolean)
-        .join('，')
-      ElMessage.warning(`提醒刷新完成：${details}`)
-    } else {
-      ElMessage.success(`提醒和开播状态刷新完成，当前有 ${result.reminderCount} 位主播达到90+`)
-    }
-  } catch (error) {
-    ElMessage.error(`提醒刷新失败：${error instanceof Error ? error.message : String(error)}`)
-  } finally {
-    intimacyReminderRefreshing.value = false
-  }
-}
 
 // ───── 编辑名单 ─────
 const medalInfoPanelVisible = ref<boolean>(false)
@@ -204,70 +151,6 @@ function handleRowClick(row: MedalInfoRow) {
       :closable="false"
       show-icon
     />
-
-    <!-- 储蓄亲密度提醒 -->
-    <el-card class="intimacy-reminder-card" shadow="never">
-      <template #header>
-        <div class="intimacy-reminder-header">
-          <el-text tag="b" type="warning">
-            以下主播储蓄亲密度即将溢出
-            <template v-if="intimacyReminders.length"> · {{ intimacyReminders.length }}人</template>
-          </el-text>
-          <el-button
-            size="small"
-            type="warning"
-            plain
-            :icon="RefreshRight"
-            :loading="intimacyReminderRefreshing"
-            @click="handleRefreshIntimacyReminders"
-          >
-            刷新提醒
-          </el-button>
-        </div>
-      </template>
-
-      <el-table
-        v-if="intimacyReminders.length"
-        :data="intimacyReminders"
-        size="small"
-        max-height="220"
-      >
-        <el-table-column prop="nickName" label="主播" min-width="120" />
-        <el-table-column prop="medalName" label="粉丝牌" min-width="90" />
-        <el-table-column prop="freeIntimacy" label="已储蓄" width="90" align="center">
-          <template #default="scope">
-            <el-tag :type="scope.row.reachLimit ? 'danger' : 'warning'" effect="dark">
-              {{ scope.row.freeIntimacy }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="当前开播状态" width="110" align="center">
-          <template #default="scope">
-            <el-tag v-if="scope.row.liveStatus === 1" type="success" effect="dark">
-              正在直播
-            </el-tag>
-            <el-tag v-else-if="scope.row.liveStatus === 2" type="warning">轮播中</el-tag>
-            <el-tag v-else-if="scope.row.liveStatus === 0" type="info">未开播</el-tag>
-            <el-tag v-else type="danger">状态未知</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="90" align="center">
-          <template #default="scope">
-            <el-link
-              :href="'https://live.bilibili.com/' + scope.row.roomId + '?visit_id='"
-              rel="noreferrer"
-              type="primary"
-              target="_blank"
-            >
-              去投喂
-            </el-link>
-          </template>
-        </el-table-column>
-      </el-table>
-      <el-text v-else type="info">
-        暂无即将溢出的提醒。任务查询到亲密度时会自动更新，也可以点击“刷新提醒”扫描全部粉丝牌和开播状态。
-      </el-text>
-    </el-card>
 
     <el-row>
       <el-button text type="primary" @click="uiStore.setActiveMenuIndex('WeeklySummary')">
@@ -442,6 +325,7 @@ function handleRowClick(row: MedalInfoRow) {
     <!-- 弹窗：编辑名单 -->
     <el-dialog
       v-model="medalInfoPanelVisible"
+      append-to-body
       :title="`编辑粉丝勋章名单 - ${currentTaskLabel}`"
       :lock-scroll="false"
       @close="unwatchFansMedals"
@@ -532,18 +416,6 @@ function handleRowClick(row: MedalInfoRow) {
 .script-instance-warning :deep(.el-alert__title) {
   font-weight: 600;
   color: var(--el-color-danger);
-}
-
-.intimacy-reminder-card {
-  margin-bottom: 16px;
-  border-color: var(--el-color-warning-light-5);
-}
-
-.intimacy-reminder-header {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
 }
 
 .avatar-wrap {

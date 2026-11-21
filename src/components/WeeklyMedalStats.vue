@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onScopeDispose, ref } from 'vue'
-import { useBiliStore, useCacheStore, useModuleStore } from '@/stores'
+import { useBiliStore, useCacheStore, useModuleStore, useUIStore } from '@/stores'
 import { ElMessage } from 'element-plus'
 import { RefreshRight } from '@element-plus/icons-vue'
 import { useWeeklyMedalStore } from '@/stores/useWeeklyMedalStore'
@@ -15,6 +15,7 @@ const biliStore = useBiliStore()
 const weeklyStore = useWeeklyMedalStore()
 const cacheStore = useCacheStore()
 const moduleStore = useModuleStore()
+const uiStore = useUIStore()
 const watchConfig = computed(() => moduleStore.moduleConfig.DailyTasks.LiveTasks.medalTasks.watch)
 const search = ref('')
 const refreshing = ref(false)
@@ -152,9 +153,8 @@ async function refreshSummary() {
 
 <template>
   <el-card class="weekly-card" shadow="never">
-    <template #header>
-      <div class="weekly-header">
-        <el-text tag="b">每周小结</el-text>
+    <Teleport v-if="uiStore.uiConfig.activeMenuIndex === 'WeeklySummary'" to="#blth-page-actions">
+      <div class="weekly-actions">
         <el-select v-model="selectedWeek" class="week-select" size="small" aria-label="统计周">
           <el-option :label="`本周（${currentWeek} 起）`" value="current" />
           <el-option
@@ -176,7 +176,7 @@ async function refreshSummary() {
           刷新本周
         </el-button>
       </div>
-    </template>
+    </Teleport>
     <el-alert
       v-if="cacheStore.currentScriptType === 'Other'"
       class="summary-message"
@@ -291,12 +291,11 @@ async function refreshSummary() {
   margin-bottom: 16px;
 }
 
-.weekly-header {
+.weekly-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  justify-content: space-between;
 }
 
 .week-select {
